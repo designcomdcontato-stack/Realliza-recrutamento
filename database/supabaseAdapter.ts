@@ -7,6 +7,55 @@ import {
 } from "../types";
 import { DatabaseAdapter } from "./dbInterface";
 
+function formatDateOptionally(dateStr: any): string | null {
+  if (!dateStr) return null;
+  if (typeof dateStr !== 'string') {
+    if (dateStr instanceof Date) {
+      const year = dateStr.getFullYear();
+      const month = String(dateStr.getMonth() + 1).padStart(2, '0');
+      const day = String(dateStr.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return null;
+  }
+  const trimmed = dateStr.trim();
+  if (trimmed === '') return null;
+
+  // DD/MM/YYYY ou D/M/YYYY
+  const brDateRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/;
+  const match = trimmed.match(brDateRegex);
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const month = match[2].padStart(2, '0');
+    const year = match[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // YYYY-MM-DD
+  const isoDateRegex = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:T.*)?$/;
+  const isoMatch = trimmed.match(isoDateRegex);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, '0');
+    const day = isoMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  try {
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+      const day = String(parsed.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return null;
+}
+
 export class SupabaseDatabaseAdapter implements DatabaseAdapter {
   private mapCandidate(data: any): Candidate {
     const experiences = Array.isArray(data.experiences) ? data.experiences : [];
@@ -191,7 +240,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       name: data.name || "Não localizado",
       normalized_name: data.normalizedName || "",
       gender: data.gender || Gender.UNKNOWN,
-      birth_date: data.birthDate,
+      birth_date: formatDateOptionally(data.birthDate),
       age: data.age,
       city: data.city || "Não localizado",
       phone: data.phone || "",
@@ -234,7 +283,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     if (data.name !== undefined) updateData.name = data.name || "Não localizado";
     if (data.normalizedName !== undefined) updateData.normalized_name = data.normalizedName;
     if (data.gender !== undefined) updateData.gender = data.gender || Gender.UNKNOWN;
-    if (data.birthDate !== undefined) updateData.birth_date = data.birthDate;
+    if (data.birthDate !== undefined) updateData.birth_date = formatDateOptionally(data.birthDate);
     if (data.age !== undefined) updateData.age = data.age;
     if (data.city !== undefined) updateData.city = data.city || "Não localizado";
     if (data.phone !== undefined) updateData.phone = data.phone;
@@ -472,7 +521,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       stage: data.currentPhase || "Novo",
       status: data.currentStatus || "Novo",
       entry_date: data.entryDate || new Date().toISOString(),
-      interview_date: data.interviewDate || null,
+      interview_date: formatDateOptionally(data.interviewDate),
       interview_time: data.interviewTime || null,
       observations: data.observations || "",
       origin: data.origin || "Manual",
@@ -520,7 +569,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     if (data.currentPhase !== undefined) updateData.stage = data.currentPhase;
     if (data.currentStatus !== undefined) updateData.status = data.currentStatus;
     if (data.entryDate !== undefined) updateData.entry_date = data.entryDate;
-    if (data.interviewDate !== undefined) updateData.interview_date = data.interviewDate;
+    if (data.interviewDate !== undefined) updateData.interview_date = formatDateOptionally(data.interviewDate);
     if (data.interviewTime !== undefined) updateData.interview_time = data.interviewTime;
     if (data.observations !== undefined) updateData.observations = data.observations;
     if (data.origin !== undefined) updateData.origin = data.origin;
@@ -629,7 +678,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       candidate_id: data.candidateId,
       application_id: data.applicationId,
       job_id: data.jobId,
-      date: data.date,
+      date: formatDateOptionally(data.date),
       time: data.time,
       responsible: data.responsible,
       status: data.status,
@@ -655,7 +704,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
 
   async updateInterview(id: string, data: Partial<Interview>): Promise<Interview> {
     const updateData: any = {};
-    if (data.date !== undefined) updateData.date = data.date;
+    if (data.date !== undefined) updateData.date = formatDateOptionally(data.date);
     if (data.time !== undefined) updateData.time = data.time;
     if (data.responsible !== undefined) updateData.responsible = data.responsible;
     if (data.status !== undefined) updateData.status = data.status;
