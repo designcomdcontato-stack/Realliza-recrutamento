@@ -463,9 +463,10 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
   }
 
   async createApplication(data: Omit<Application, "id" | "createdAt" | "updatedAt"> & { id?: string }): Promise<Application> {
+    const isValidUuid = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     const insertData: any = {
       candidate_id: data.candidateId,
-      job_id: data.jobId,
+      job_id: isValidUuid(data.jobId) ? data.jobId : null,
       channel: data.channel || "Direto",
       referred_by: data.whoIndicated || "",
       stage: data.currentPhase || "Novo",
@@ -510,9 +511,10 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
   }
 
   async updateApplication(id: string, data: Partial<Application>): Promise<Application> {
+    const isValidUuid = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     const updateData: any = {};
     if (data.candidateId !== undefined) updateData.candidate_id = data.candidateId;
-    if (data.jobId !== undefined) updateData.job_id = data.jobId;
+    if (data.jobId !== undefined) updateData.job_id = isValidUuid(data.jobId) ? data.jobId : null;
     if (data.channel !== undefined) updateData.channel = data.channel;
     if (data.whoIndicated !== undefined) updateData.referred_by = data.whoIndicated;
     if (data.currentPhase !== undefined) updateData.stage = data.currentPhase;

@@ -114,7 +114,7 @@ export const importSpreadsheetService = {
 
         await db.createApplication({
           candidateId,
-          jobId: job ? job.id : "NO_JOB",
+          jobId: job ? job.id : "",
           channel: channelName,
           currentPhase: phase,
           currentStatus: status,
