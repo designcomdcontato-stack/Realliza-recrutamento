@@ -541,6 +541,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       compatibility_calculated_at: data.compatibilityCalculatedAt || null,
       experience_in_area: data.experienceInArea || null,
       compatibility_details: data.compatibilityDetails || null,
+      responsible: data.responsible || null,
       leader_id: isValidUuid(data.leaderId) ? data.leaderId : null,
       sector_id: isValidUuid(data.sectorId) ? data.sectorId : null,
       sector_name: data.sectorName || null,
@@ -561,6 +562,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       error.code === '42703' || 
       error.message?.includes('column') || 
       error.message?.includes('schema cache') ||
+      error.message?.includes('responsible') ||
       error.message?.includes('hiring_date') ||
       error.message?.includes('leader_id') ||
       error.message?.includes('sector_id') ||
@@ -570,6 +572,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     )) {
       console.warn("Detectadas colunas novas ausentes no banco de dados Supabase do usuário. Tentando inserir sem os dados de admissão...", error.message);
       const fallbackInsertData = { ...insertData };
+      delete fallbackInsertData.responsible;
       delete fallbackInsertData.leader_id;
       delete fallbackInsertData.sector_id;
       delete fallbackInsertData.sector_name;
@@ -624,6 +627,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     if (data.compatibilityCalculatedAt !== undefined) updateData.compatibility_calculated_at = data.compatibilityCalculatedAt || null;
     if (data.experienceInArea !== undefined) updateData.experience_in_area = data.experienceInArea || null;
     if (data.compatibilityDetails !== undefined) updateData.compatibility_details = data.compatibilityDetails || null;
+    if (data.responsible !== undefined) updateData.responsible = data.responsible || null;
     if (data.leaderId !== undefined) updateData.leader_id = isValidUuid(data.leaderId) ? data.leaderId : null;
     if (data.sectorId !== undefined) updateData.sector_id = isValidUuid(data.sectorId) ? data.sectorId : null;
     if (data.sectorName !== undefined) updateData.sector_name = data.sectorName || null;
@@ -642,6 +646,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       error.code === '42703' || 
       error.message?.includes('column') || 
       error.message?.includes('schema cache') ||
+      error.message?.includes('responsible') ||
       error.message?.includes('hiring_date') ||
       error.message?.includes('leader_id') ||
       error.message?.includes('sector_id') ||
@@ -651,6 +656,7 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     )) {
       console.warn("Detectadas colunas novas ausentes no banco de dados Supabase do usuário. Tentando atualizar sem os dados de admissão...", error.message);
       const fallbackUpdateData = { ...updateData };
+      delete fallbackUpdateData.responsible;
       delete fallbackUpdateData.leader_id;
       delete fallbackUpdateData.sector_id;
       delete fallbackUpdateData.sector_name;

@@ -49,6 +49,7 @@ CREATE TABLE applications (
   referred_by text,
   stage text,
   status text,
+  responsible text,
   responsible_id uuid,
   entry_date timestamptz DEFAULT now(),
   interview_date date,
