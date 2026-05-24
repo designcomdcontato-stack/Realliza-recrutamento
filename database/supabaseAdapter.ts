@@ -138,6 +138,12 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       compatibilityCalculatedAt: data.compatibility_calculated_at,
       experienceInArea: data.experience_in_area || "",
       compatibilityDetails: data.compatibility_details,
+      leaderId: data.leader_id || undefined,
+      sectorId: data.sector_id || undefined,
+      sectorName: data.sector_name || undefined,
+      isEmployeeActive: data.is_employee_active !== null && data.is_employee_active !== undefined ? data.is_employee_active : undefined,
+      hiringDate: data.hiring_date || undefined,
+      terminationDate: data.termination_date || undefined,
       createdAt: data.created_at,
       updatedAt: data.updated_at
     };
@@ -534,16 +540,51 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       compatibility_explanation: data.compatibilityExplanation || null,
       compatibility_calculated_at: data.compatibilityCalculatedAt || null,
       experience_in_area: data.experienceInArea || null,
-      compatibility_details: data.compatibilityDetails || null
+      compatibility_details: data.compatibilityDetails || null,
+      leader_id: isValidUuid(data.leaderId) ? data.leaderId : null,
+      sector_id: isValidUuid(data.sectorId) ? data.sectorId : null,
+      sector_name: data.sectorName || null,
+      is_employee_active: data.isEmployeeActive !== undefined ? data.isEmployeeActive : true,
+      hiring_date: formatDateOptionally(data.hiringDate),
+      termination_date: formatDateOptionally(data.terminationDate)
     };
 
     if (data.id) insertData.id = data.id;
 
-    const { data: created, error } = await supabase
+    let { data: created, error } = await supabase
       .from('applications')
       .insert(insertData)
       .select()
       .single();
+    
+    if (error && (
+      error.code === '42703' || 
+      error.message?.includes('column') || 
+      error.message?.includes('schema cache') ||
+      error.message?.includes('hiring_date') ||
+      error.message?.includes('leader_id') ||
+      error.message?.includes('sector_id') ||
+      error.message?.includes('sector_name') ||
+      error.message?.includes('is_employee_active') ||
+      error.message?.includes('termination_date')
+    )) {
+      console.warn("Detectadas colunas novas ausentes no banco de dados Supabase do usuário. Tentando inserir sem os dados de admissão...", error.message);
+      const fallbackInsertData = { ...insertData };
+      delete fallbackInsertData.leader_id;
+      delete fallbackInsertData.sector_id;
+      delete fallbackInsertData.sector_name;
+      delete fallbackInsertData.is_employee_active;
+      delete fallbackInsertData.hiring_date;
+      delete fallbackInsertData.termination_date;
+
+      const retryResult = await supabase
+        .from('applications')
+        .insert(fallbackInsertData)
+        .select()
+        .single();
+      created = retryResult.data;
+      error = retryResult.error;
+    }
     
     if (error) {
        console.error("Falha ao createApplication no Supabase:", {
@@ -583,13 +624,49 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
     if (data.compatibilityCalculatedAt !== undefined) updateData.compatibility_calculated_at = data.compatibilityCalculatedAt || null;
     if (data.experienceInArea !== undefined) updateData.experience_in_area = data.experienceInArea || null;
     if (data.compatibilityDetails !== undefined) updateData.compatibility_details = data.compatibilityDetails || null;
+    if (data.leaderId !== undefined) updateData.leader_id = isValidUuid(data.leaderId) ? data.leaderId : null;
+    if (data.sectorId !== undefined) updateData.sector_id = isValidUuid(data.sectorId) ? data.sectorId : null;
+    if (data.sectorName !== undefined) updateData.sector_name = data.sectorName || null;
+    if (data.isEmployeeActive !== undefined) updateData.is_employee_active = data.isEmployeeActive;
+    if (data.hiringDate !== undefined) updateData.hiring_date = formatDateOptionally(data.hiringDate);
+    if (data.terminationDate !== undefined) updateData.termination_date = formatDateOptionally(data.terminationDate);
 
-    const { data: updated, error } = await supabase
+    let { data: updated, error } = await supabase
       .from('applications')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
+    
+    if (error && (
+      error.code === '42703' || 
+      error.message?.includes('column') || 
+      error.message?.includes('schema cache') ||
+      error.message?.includes('hiring_date') ||
+      error.message?.includes('leader_id') ||
+      error.message?.includes('sector_id') ||
+      error.message?.includes('sector_name') ||
+      error.message?.includes('is_employee_active') ||
+      error.message?.includes('termination_date')
+    )) {
+      console.warn("Detectadas colunas novas ausentes no banco de dados Supabase do usuário. Tentando atualizar sem os dados de admissão...", error.message);
+      const fallbackUpdateData = { ...updateData };
+      delete fallbackUpdateData.leader_id;
+      delete fallbackUpdateData.sector_id;
+      delete fallbackUpdateData.sector_name;
+      delete fallbackUpdateData.is_employee_active;
+      delete fallbackUpdateData.hiring_date;
+      delete fallbackUpdateData.termination_date;
+
+      const retryResult = await supabase
+        .from('applications')
+        .update(fallbackUpdateData)
+        .eq('id', id)
+        .select()
+        .single();
+      updated = retryResult.data;
+      error = retryResult.error;
+    }
     
     if (error) {
        console.error(`Falha ao updateApplication(${id}) no Supabase:`, {

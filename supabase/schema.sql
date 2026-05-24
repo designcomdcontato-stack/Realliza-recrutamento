@@ -64,6 +64,12 @@ CREATE TABLE applications (
   compatibility_explanation text,
   compatibility_calculated_at timestamptz,
   experience_in_area text,
+  leader_id uuid,
+  sector_id uuid,
+  sector_name text,
+  is_employee_active boolean DEFAULT true,
+  hiring_date date,
+  termination_date date,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
