@@ -218,7 +218,7 @@ export default function PipelinePage() {
     if (!moveModal) return;
     const { app, targetPhase } = moveModal;
     
-    if ((targetPhase === ApplicationPhase.HIRING || targetPhase === ApplicationPhase.ONBOARDING) && !isHiringFormOpen && !app.hiringDate) {
+    if ((targetPhase === ApplicationPhase.HIRING || targetPhase === ApplicationPhase.ONBOARDING) && !isHiringFormOpen) {
       setIsHiringFormOpen(true);
       return;
     }

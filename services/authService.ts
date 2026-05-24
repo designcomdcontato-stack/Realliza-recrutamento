@@ -213,7 +213,18 @@ export const authService = {
     }
 
     try {
-      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.warn("Supabase auth session error (expected if token expired or invalid):", error.message);
+        if (localStorage.getItem('realliza_session')) {
+          localStorage.removeItem('realliza_session');
+          window.dispatchEvent(new Event('realliza_auth_change'));
+        }
+        return false;
+      }
+
+      const supabaseSession = data?.session;
       
       if (!supabaseSession) {
         if (localStorage.getItem('realliza_session')) {
