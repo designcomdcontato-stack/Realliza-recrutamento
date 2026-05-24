@@ -54,13 +54,44 @@ export default function PipelinePage() {
     isEmployeeActive: true
   });
 
-  const openHiringForm = (app: any) => {
-    setHiringData({
+  // Automatically resolve names to settings IDs to prefill leader and sector dropdowns
+  const getResolvedHiringFields = (app: any) => {
+    let resolvedLeaderId = app.leaderId || '';
+    if (!resolvedLeaderId && app.responsible) {
+      const match = settings?.leaders?.find(l => l.name.toLowerCase().trim() === app.responsible.toLowerCase().trim());
+      if (match) resolvedLeaderId = match.id;
+    }
+
+    let resolvedSectorId = app.sectorId || '';
+    if (!resolvedSectorId && app.sectorName) {
+      const match = settings?.sectors?.find(s => s.name.toLowerCase().trim() === app.sectorName.toLowerCase().trim());
+      if (match) resolvedSectorId = match.id;
+    }
+
+    return {
       hiringDate: app.hiringDate || new Date().toISOString().split('T')[0],
-      leaderId: app.leaderId || '',
-      sectorId: app.sectorId || '',
+      leaderId: resolvedLeaderId,
+      sectorId: resolvedSectorId,
       isEmployeeActive: app.isEmployeeActive ?? true
-    });
+    };
+  };
+
+  useEffect(() => {
+    if (moveModal) {
+      const { app, targetPhase } = moveModal;
+      if (targetPhase === ApplicationPhase.HIRING || targetPhase === ApplicationPhase.ONBOARDING) {
+        setHiringData(getResolvedHiringFields(app));
+        setIsHiringFormOpen(true);
+      } else {
+        setIsHiringFormOpen(false);
+      }
+    } else {
+      setIsHiringFormOpen(false);
+    }
+  }, [moveModal, settings]);
+
+  const openHiringForm = (app: any) => {
+    setHiringData(getResolvedHiringFields(app));
     setMoveModal({ app, targetPhase: app.currentPhase });
     setIsHiringFormOpen(true);
   };
@@ -199,6 +230,25 @@ export default function PipelinePage() {
 
     if (isHiringFormOpen) {
       Object.assign(updateData, hiringData);
+      
+      // Keep name strings synchronized with the selected IDs
+      if (hiringData.leaderId) {
+        const leader = settings?.leaders?.find(l => l.id === hiringData.leaderId);
+        if (leader) {
+          updateData.responsible = leader.name;
+        }
+      } else {
+        updateData.responsible = "";
+      }
+
+      if (hiringData.sectorId) {
+        const sector = settings?.sectors?.find(s => s.id === hiringData.sectorId);
+        if (sector) {
+          updateData.sectorName = sector.name;
+        }
+      } else {
+        updateData.sectorName = undefined;
+      }
     }
     
     await updateApplication(app.id, updateData);
