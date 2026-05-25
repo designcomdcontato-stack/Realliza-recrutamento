@@ -4,12 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { authService } from '@/services/authService';
 
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
-    if (typeof window !== 'undefined') {
-      return authService.isAuthenticated();
-    }
-    return null;
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -30,6 +25,16 @@ export function useAuth() {
   }, [pathname, router]);
 
   useEffect(() => {
+    // Check local session state on client mount for instant render
+    const localStatus = authService.isAuthenticated();
+    setIsAuthenticated(localStatus);
+
+    if (!localStatus && pathname !== '/login') {
+      router.replace('/login');
+    } else if (localStatus && pathname === '/login') {
+      router.replace('/dashboard');
+    }
+
     let active = true;
 
     // Sincronizar assincronamente com a sessão ativa do Supabase Auth no carregamento inicial
@@ -64,7 +69,7 @@ export function useAuth() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('realliza_auth_change', checkAuth);
     };
-  }, [checkAuth]);
+  }, [checkAuth, pathname, router]);
 
   return {
     isAuthenticated,

@@ -163,6 +163,15 @@ export const authService = {
     } catch (e) {
       console.error("Erro ao deslogar do Supabase:", e);
     }
+    // Limpar tokens residuais do Supabase no localStorage ao deslogar
+    if (typeof window !== 'undefined') {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+          localStorage.removeItem(key);
+        }
+      }
+    }
     // O evento notificará useAuth() / AuthGuard para redirecionar de forma limpa usando o router do Next.js
     window.dispatchEvent(new Event('realliza_auth_change'));
   },
@@ -217,8 +226,14 @@ export const authService = {
       
       if (error) {
         console.warn("Supabase auth session error (expected if token expired or invalid):", error.message);
-        if (localStorage.getItem('realliza_session')) {
+        if (typeof window !== 'undefined') {
           localStorage.removeItem('realliza_session');
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+              localStorage.removeItem(key);
+            }
+          }
           window.dispatchEvent(new Event('realliza_auth_change'));
         }
         return false;
@@ -227,8 +242,14 @@ export const authService = {
       const supabaseSession = data?.session;
       
       if (!supabaseSession) {
-        if (localStorage.getItem('realliza_session')) {
+        if (typeof window !== 'undefined') {
           localStorage.removeItem('realliza_session');
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+              localStorage.removeItem(key);
+            }
+          }
           window.dispatchEvent(new Event('realliza_auth_change'));
         }
         return false;
@@ -258,12 +279,35 @@ export const authService = {
         }
       }
 
-      await supabase.auth.signOut();
-      localStorage.removeItem('realliza_session');
-      window.dispatchEvent(new Event('realliza_auth_change'));
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutErr) {
+        console.warn("signOut failure during clean up (ignorable):", signOutErr);
+      }
+      
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('realliza_session');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+            localStorage.removeItem(key);
+          }
+        }
+        window.dispatchEvent(new Event('realliza_auth_change'));
+      }
       return false;
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro em checkActiveSession:", e);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('realliza_session');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+            localStorage.removeItem(key);
+          }
+        }
+        window.dispatchEvent(new Event('realliza_auth_change'));
+      }
       return false;
     }
   }

@@ -29,9 +29,18 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const { settings } = useSettings();
   const { isAuthenticated } = useAuth();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   // Hide the entire sidebar system (including button) if not logged in or on login page
-  if (pathname === '/login' || isAuthenticated === false) {
+  if (pathname === '/login' || !isAuthenticated) {
     return null;
   }
 

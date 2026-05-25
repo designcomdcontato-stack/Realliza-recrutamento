@@ -19,10 +19,26 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   public static getDerivedStateFromError(error: Error): State {
+    if (error && (
+      error.message?.includes('NEXT_REDIRECT') || 
+      error.message?.includes('NEXT_NOT_FOUND') ||
+      (error as any).digest?.startsWith('NEXT_REDIRECT') ||
+      (error as any).digest?.startsWith('NEXT_NOT_FOUND')
+    )) {
+      throw error;
+    }
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    if (error && (
+      error.message?.includes('NEXT_REDIRECT') || 
+      error.message?.includes('NEXT_NOT_FOUND') ||
+      (error as any).digest?.startsWith('NEXT_REDIRECT') ||
+      (error as any).digest?.startsWith('NEXT_NOT_FOUND')
+    )) {
+      throw error;
+    }
     console.error('Uncaught error:', error, errorInfo);
   }
 
