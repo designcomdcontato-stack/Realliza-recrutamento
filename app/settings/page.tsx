@@ -44,6 +44,23 @@ export default function SettingsPage() {
   const [importLog, setImportLog] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Estados para manipulação de Fases do Pipeline
+  const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+  const [editingPhaseName, setEditingPhaseName] = useState('');
+  const [editingPhaseColor, setEditingPhaseColor] = useState('');
+  const [editingPhaseOrder, setEditingPhaseOrder] = useState<number>(0);
+  const [newPhaseName, setNewPhaseName] = useState('');
+  const [newPhaseColor, setNewPhaseColor] = useState('#BFDBFE');
+
+  // Estados para manipulação de Status do Pipeline
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+  const [editingStatusName, setEditingStatusName] = useState('');
+  const [editingStatusColor, setEditingStatusColor] = useState('');
+  const [editingStatusPhases, setEditingStatusPhases] = useState<string[]>([]);
+  const [newStatusName, setNewStatusName] = useState('');
+  const [newStatusColor, setNewStatusColor] = useState('#94A3B8');
+  const [newStatusPhases, setNewStatusPhases] = useState<string[]>([]);
+
   useEffect(() => {
     if (settings) {
       setLocalSettings(settings);
@@ -105,6 +122,107 @@ export default function SettingsPage() {
       ...localSettings,
       channels: localSettings.channels.filter(c => c.id !== id)
     });
+  };
+
+   const addPhase = async () => {
+    if (!newPhaseName.trim() || !localSettings) return;
+    const newPhase = {
+      id: newPhaseName.trim(),
+      name: newPhaseName.trim(),
+      color: newPhaseColor,
+      order: localSettings.phases.length
+    };
+    const updated = {
+      ...localSettings,
+      phases: [...localSettings.phases, newPhase]
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+    setNewPhaseName('');
+    setNewPhaseColor('#BFDBFE');
+  };
+
+  const removePhase = async (id: string) => {
+    if (!localSettings) return;
+    const updated = {
+      ...localSettings,
+      phases: localSettings.phases.filter(p => p.id !== id)
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+  };
+
+  const startEditPhase = (phase: any) => {
+    setEditingPhaseId(phase.id);
+    setEditingPhaseName(phase.name);
+    setEditingPhaseColor(phase.color);
+    setEditingPhaseOrder(phase.order !== undefined ? phase.order : (localSettings?.phases.indexOf(phase) || 0));
+  };
+
+  const saveEditPhase = async () => {
+    if (!editingPhaseId || !editingPhaseName.trim() || !localSettings) return;
+    const updated = {
+      ...localSettings,
+      phases: localSettings.phases.map(p => 
+        p.id === editingPhaseId 
+          ? { ...p, name: editingPhaseName.trim(), color: editingPhaseColor, order: editingPhaseOrder } 
+          : p
+      )
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+    setEditingPhaseId(null);
+  };
+
+  const addStatusSetting = async () => {
+    if (!newStatusName.trim() || !localSettings) return;
+    const newStatus = {
+      id: Math.random().toString(36).substring(7),
+      name: newStatusName.trim(),
+      color: newStatusColor,
+      associatedPhases: newStatusPhases
+    };
+    const updated = {
+      ...localSettings,
+      statuses: [...localSettings.statuses, newStatus]
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+    setNewStatusName('');
+    setNewStatusColor('#94A3B8');
+    setNewStatusPhases([]);
+  };
+
+  const removeStatusSetting = async (id: string) => {
+    if (!localSettings) return;
+    const updated = {
+      ...localSettings,
+      statuses: localSettings.statuses.filter(s => s.id !== id)
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+  };
+
+  const startEditStatus = (status: any) => {
+    setEditingStatusId(status.id);
+    setEditingStatusName(status.name);
+    setEditingStatusColor(status.color);
+    setEditingStatusPhases(status.associatedPhases || []);
+  };
+
+  const saveEditStatus = async () => {
+    if (!editingStatusId || !editingStatusName.trim() || !localSettings) return;
+    const updated = {
+      ...localSettings,
+      statuses: localSettings.statuses.map(s => 
+        s.id === editingStatusId 
+          ? { ...s, name: editingStatusName.trim(), color: editingStatusColor, associatedPhases: editingStatusPhases } 
+          : s
+      )
+    };
+    setLocalSettings(updated);
+    await updateSettings(updated);
+    setEditingStatusId(null);
   };
 
   const handleDeleteUser = async (id: string) => {
@@ -752,49 +870,329 @@ export default function SettingsPage() {
             </section>
          )}
 
-         {activeTab === 'fluxo' && (
+         {activeTab === 'fluxo' && localSettings && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-               <section className="space-y-6">
-                  <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-                     <Layers size={18} className="text-brand-coral" />
-                     <h2 className="font-extrabold uppercase text-xs tracking-widest">Fases do Pipeline</h2>
-                  </div>
-                  <div className="bg-white p-10 rounded-[40px] border border-border/50 shadow-sm space-y-6">
-                     <div className="flex items-center gap-3 p-4 bg-brand-bg/50 border border-dashed border-border rounded-2xl justify-center text-muted-foreground italic text-sm">
-                        Em breve: Customize a ordem e nomes das fases.
-                     </div>
-                     <div className="space-y-3">
-                        {localSettings.phases.map(p => (
-                           <div key={p.id} className="flex items-center justify-between p-5 rounded-2xl bg-brand-bg/20 border border-border/30">
-                              <span className="text-sm font-extrabold tracking-tight">{p.name}</span>
-                              <div style={{ backgroundColor: p.color }} className="w-4 h-4 rounded-full shadow-sm" />
-                           </div>
-                        ))}
-                     </div>
-                  </div>
-               </section>
+                <section className="space-y-6">
+                   <div className="flex items-center gap-2 border-b border-border/50 pb-3">
+                      <Layers size={18} className="text-brand-coral" />
+                      <h2 className="font-extrabold uppercase text-xs tracking-widest">Fases do Pipeline</h2>
+                   </div>
+                   <div className="bg-white p-8 rounded-[40px] border border-border/50 shadow-sm space-y-6">
+                      
+                      {/* Adicionar Nova Fase */}
+                      <div className="p-6 bg-brand-bg/40 border border-border/50 rounded-3xl space-y-4">
+                         <h4 className="font-extrabold text-xs uppercase tracking-wider text-brand-dark mb-2">Adicionar Nova Fase</h4>
+                         <div className="flex flex-col sm:flex-row gap-3">
+                            <input 
+                               type="text"
+                               placeholder="Nome da Fase (ex: Triagem Técnica)"
+                               value={newPhaseName}
+                               onChange={(e) => setNewPhaseName(e.target.value)}
+                               className="flex-1 px-5 py-3 rounded-2xl border border-border outline-none focus:border-brand-coral font-bold text-xs bg-white text-brand-dark placeholder:text-muted-foreground/50"
+                            />
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                               <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Cor:</span>
+                               <input 
+                                  type="color"
+                                  value={newPhaseColor}
+                                  onChange={(e) => setNewPhaseColor(e.target.value)}
+                                  className="w-10 h-10 rounded-xl cursor-pointer border border-border outline-none p-1 bg-white"
+                               />
+                               <button
+                                  type="button"
+                                  onClick={addPhase}
+                                  disabled={!newPhaseName.trim()}
+                                  className="px-6 py-3 bg-brand-dark text-white rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-95 transition-all shadow-md shadow-brand-dark/15 disabled:opacity-40 disabled:cursor-not-allowed text-center shrink-0"
+                               >
+                                  <Plus size={14} />
+                                  Adicionar
+                                </button>
+                            </div>
+                         </div>
+                      </div>
 
-               <section className="space-y-6">
-                  <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-                     <CheckSquare size={18} className="text-brand-coral" />
-                     <h2 className="font-extrabold uppercase text-xs tracking-widest">Status Personalizados</h2>
-                  </div>
-                  <div className="bg-white p-10 rounded-[40px] border border-border/50 shadow-sm space-y-6">
-                     <div className="flex items-center gap-3 p-4 bg-brand-bg/50 border border-dashed border-border rounded-2xl justify-center text-muted-foreground italic text-sm">
-                        Em breve: Adicione seus próprios status de triagem.
-                     </div>
-                     <div className="grid grid-cols-2 gap-3">
-                        {localSettings.statuses.map(s => (
-                           <div key={s.id} className="flex items-center gap-2 p-4 rounded-2xl border border-border/30 bg-brand-bg/20">
-                              <div style={{ backgroundColor: s.color }} className="w-3 h-3 rounded-full" />
-                              <span className="text-xs font-bold truncate">{s.name}</span>
-                           </div>
-                        ))}
-                     </div>
-                  </div>
-               </section>
-            </div>
-         )}
+                      {/* Listagem das Fases */}
+                      <div className="space-y-3">
+                         {localSettings.phases.map((p, index) => {
+                            const isEditing = editingPhaseId === p.id;
+                            return (
+                               <div key={p.id} className="flex flex-col p-5 rounded-2xl bg-brand-bg/20 border border-border/30 transition-all">
+                                  {isEditing ? (
+                                     <div className="space-y-4 w-full">
+                                        <div className="flex flex-col sm:flex-row gap-3 items-center">
+                                           <input 
+                                              type="text"
+                                              value={editingPhaseName}
+                                              onChange={(e) => setEditingPhaseName(e.target.value)}
+                                              className="w-full sm:flex-1 px-4 py-2 text-xs font-bold rounded-xl border border-border outline-none focus:border-brand-coral bg-white text-brand-dark"
+                                           />
+                                           <div className="flex items-center gap-3 self-start sm:self-auto">
+                                              <span className="text-[10px] font-extrabold uppercase text-muted-foreground">Cor:</span>
+                                              <input 
+                                                 type="color"
+                                                 value={editingPhaseColor}
+                                                 onChange={(e) => setEditingPhaseColor(e.target.value)}
+                                                 className="w-8 h-8 rounded-lg cursor-pointer border border-border p-1 bg-white"
+                                              />
+                                              <span className="text-[10px] font-extrabold uppercase text-muted-foreground">Ordem:</span>
+                                              <input 
+                                                 type="number"
+                                                 value={editingPhaseOrder}
+                                                 onChange={(e) => setEditingPhaseOrder(Number(e.target.value))}
+                                                 className="w-16 px-2 py-2 text-center text-xs font-bold rounded-xl border border-border outline-none focus:border-brand-coral bg-white text-brand-dark"
+                                              />
+                                           </div>
+                                        </div>
+                                        <div className="flex justify-end gap-2">
+                                           <button 
+                                              type="button"
+                                              onClick={() => setEditingPhaseId(null)}
+                                              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-brand-dark rounded-xl font-bold text-[10px] uppercase transition-all"
+                                           >
+                                              Cancelar
+                                           </button>
+                                           <button 
+                                              type="button"
+                                              onClick={saveEditPhase}
+                                              disabled={!editingPhaseName.trim()}
+                                              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-[10px] uppercase transition-all"
+                                           >
+                                              Salvar
+                                           </button>
+                                        </div>
+                                     </div>
+                                  ) : (
+                                     <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                           <div style={{ backgroundColor: p.color }} className="w-4 h-4 rounded-full shadow-inner shrink-0" />
+                                           <span className="text-sm font-extrabold tracking-tight text-brand-dark">{p.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                           <span className="text-[10px] font-bold text-muted-foreground uppercase bg-white px-2.5 py-1 border border-border/50 rounded-lg shrink-0">
+                                              Ordem: {p.order !== undefined ? p.order : index}
+                                           </span>
+                                           <button 
+                                              type="button"
+                                              onClick={() => startEditPhase(p)}
+                                              className="p-2 text-brand-dark hover:bg-white rounded-xl border border-transparent hover:border-border/30 transition-all shrink-0"
+                                              title="Editar Fase"
+                                           >
+                                              <Edit2 size={13} />
+                                           </button>
+                                           <button 
+                                              type="button"
+                                              onClick={() => removePhase(p.id)}
+                                              className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all shrink-0"
+                                              title="Excluir Fase"
+                                           >
+                                              <Trash2 size={13} />
+                                           </button>
+                                        </div>
+                                     </div>
+                                  )}
+                               </div>
+                            );
+                         })}
+                      </div>
+                   </div>
+                </section>
+
+                <section className="space-y-6">
+                   <div className="flex items-center gap-2 border-b border-border/50 pb-3">
+                      <CheckSquare size={18} className="text-brand-coral" />
+                      <h2 className="font-extrabold uppercase text-xs tracking-widest">Status Personalizados</h2>
+                   </div>
+                   <div className="bg-white p-8 rounded-[40px] border border-border/50 shadow-sm space-y-6">
+                      
+                      {/* Adicionar Novo Status */}
+                      <div className="p-6 bg-brand-bg/40 border border-border/50 rounded-3xl space-y-4">
+                         <h4 className="font-extrabold text-xs uppercase tracking-wider text-brand-dark mb-1">Adicionar Novo Status</h4>
+                         <div className="flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                               <input 
+                                  type="text"
+                                  placeholder="Nome do Status (ex: Agenda Ajustada)"
+                                  value={newStatusName}
+                                  onChange={(e) => setNewStatusName(e.target.value)}
+                                  className="flex-1 px-5 py-3 rounded-2xl border border-border outline-none focus:border-brand-coral font-bold text-xs bg-white text-brand-dark placeholder:text-muted-foreground/50"
+                               />
+                               <div className="flex items-center gap-2 self-end sm:self-auto">
+                                  <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Cor:</span>
+                                  <input 
+                                     type="color"
+                                     value={newStatusColor}
+                                     onChange={(e) => setNewStatusColor(e.target.value)}
+                                     className="w-10 h-10 rounded-xl cursor-pointer border border-border outline-none p-1 bg-white"
+                                  />
+                                  <button
+                                     type="button"
+                                     onClick={addStatusSetting}
+                                     disabled={!newStatusName.trim() || newStatusPhases.length === 0}
+                                     className="px-6 py-3 bg-brand-dark text-white rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-95 transition-all shadow-md shadow-brand-dark/15 disabled:opacity-40 disabled:cursor-not-allowed justify-center shrink-0"
+                                     title={newStatusPhases.length === 0 ? "Selecione ao menos uma fase abaixo antes de adicionar" : ""}
+                                  >
+                                     <Plus size={14} />
+                                     Adicionar
+                                  </button>
+                               </div>
+                            </div>
+
+                            {/* Seleção de fases associadas */}
+                            <div className="space-y-2 bg-white/75 p-4 rounded-2xl border border-border/30">
+                               <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block mb-1">Fases Associadas (Selecione):</span>
+                               <div className="flex flex-wrap gap-1.5">
+                                  {localSettings.phases.map(p => {
+                                     const isSel = newStatusPhases.includes(p.name);
+                                     return (
+                                        <button
+                                           key={p.id}
+                                           type="button"
+                                           onClick={() => {
+                                              setNewStatusPhases(prev => 
+                                                 prev.includes(p.name) ? prev.filter(name => name !== p.name) : [...prev, p.name]
+                                              );
+                                           }}
+                                           className={cn(
+                                              "px-3 py-1.5 rounded-full border text-[10px] font-extrabold uppercase transition-all flex items-center gap-1.5",
+                                              isSel 
+                                                 ? "bg-brand-coral/15 border-brand-coral text-brand-coral" 
+                                                 : "bg-white border-border/60 text-brand-dark hover:border-brand-dark/20"
+                                           )}
+                                        >
+                                           <div style={{ backgroundColor: p.color }} className="w-2 h-2 rounded-full shrink-0" />
+                                           {p.name}
+                                        </button>
+                                     );
+                                  })}
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+
+                      {/* Listagem dos Status */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
+                         {localSettings.statuses.map(s => {
+                            const isEditing = editingStatusId === s.id;
+                            return (
+                               <div key={s.id} className="flex flex-col p-4 rounded-2xl border border-border/30 bg-brand-bg/20 transition-all justify-between gap-3">
+                                  {isEditing ? (
+                                     <div className="space-y-3 w-full">
+                                        <div className="flex gap-2">
+                                           <input 
+                                              type="text"
+                                              value={editingStatusName}
+                                              onChange={(e) => setEditingStatusName(e.target.value)}
+                                              className="flex-1 px-3 py-1.5 text-xs font-bold rounded-xl border border-border outline-none focus:border-brand-coral bg-white text-brand-dark"
+                                           />
+                                           <input 
+                                              type="color"
+                                              value={editingStatusColor}
+                                              onChange={(e) => setEditingStatusColor(e.target.value)}
+                                              className="w-8 h-8 rounded-lg cursor-pointer border border-border p-1 bg-white shrink-0"
+                                           />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                           <span className="text-[9px] font-extrabold text-muted-foreground uppercase">Fases:</span>
+                                           <div className="flex flex-wrap gap-1">
+                                              {localSettings.phases.map(p => {
+                                                 const isSel = editingStatusPhases.includes(p.name);
+                                                 return (
+                                                    <button
+                                                       key={p.id}
+                                                       type="button"
+                                                       onClick={() => {
+                                                          setEditingStatusPhases(prev => 
+                                                             prev.includes(p.name) ? prev.filter(name => name !== p.name) : [...prev, p.name]
+                                                          );
+                                                       }}
+                                                       className={cn(
+                                                          "px-2 py-1 rounded-full border text-[9px] font-black uppercase transition-all",
+                                                          isSel 
+                                                             ? "bg-brand-coral/15 border-brand-coral text-brand-coral" 
+                                                             : "bg-white border-border/50 text-brand-dark"
+                                                       )}
+                                                    >
+                                                       {p.name}
+                                                    </button>
+                                                 );
+                                              })}
+                                           </div>
+                                        </div>
+
+                                        <div className="flex justify-end gap-1.5 pt-1">
+                                           <button 
+                                              type="button"
+                                              onClick={() => setEditingStatusId(null)}
+                                              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-brand-dark rounded-lg font-bold text-[9px] uppercase transition-all"
+                                           >
+                                              Cancelar
+                                           </button>
+                                           <button 
+                                              type="button"
+                                              onClick={saveEditStatus}
+                                              disabled={!editingStatusName.trim() || editingStatusPhases.length === 0}
+                                              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-bold text-[9px] uppercase transition-all"
+                                           >
+                                              Salvar
+                                           </button>
+                                        </div>
+                                     </div>
+                                  ) : (
+                                     <div className="flex flex-col h-full justify-between gap-3">
+                                        <div className="flex items-center justify-between">
+                                           <div className="flex items-center gap-2 truncate">
+                                              <div style={{ backgroundColor: s.color }} className="w-3 h-3 rounded-full shrink-0" />
+                                              <span className="text-xs font-extrabold truncate text-brand-dark uppercase">{s.name}</span>
+                                           </div>
+                                           <div className="flex items-center gap-1">
+                                              <button 
+                                                 type="button"
+                                                 onClick={() => startEditStatus(s)}
+                                                 className="p-1.5 text-brand-dark hover:bg-white rounded-lg border border-transparent hover:border-border/30 transition-all shrink-0"
+                                                 title="Editar Status"
+                                              >
+                                                 <Edit2 size={11} />
+                                              </button>
+                                              <button 
+                                                 type="button"
+                                                 onClick={() => removeStatusSetting(s.id)}
+                                                 className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all shrink-0"
+                                                 title="Excluir Status"
+                                              >
+                                                 <Trash2 size={11} />
+                                              </button>
+                                           </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1">
+                                           {s.associatedPhases && s.associatedPhases.length > 0 ? (
+                                              s.associatedPhases.map(phName => {
+                                                 const f = localSettings.phases.find(p => p.name === phName);
+                                                 return (
+                                                    <span 
+                                                       key={phName} 
+                                                       style={{ borderColor: f?.color ? `${f.color}40` : '#E5E7EB', backgroundColor: f?.color ? `${f.color}15` : '#F9FAFB' }}
+                                                       className="text-[8px] font-black uppercase text-brand-dark/80 px-2 py-0.5 rounded-full border shrink-0"
+                                                    >
+                                                       {phName}
+                                                    </span>
+                                                 );
+                                              })
+                                           ) : (
+                                              <span className="text-[8px] font-bold text-muted-foreground italic">Qualquer fase</span>
+                                           )}
+                                        </div>
+                                     </div>
+                                  )}
+                               </div>
+                            );
+                         })}
+                      </div>
+                   </div>
+                </section>
+             </div>
+          )}
 
          {activeTab === 'database' && (
             <div className="grid grid-cols-1 gap-12 animate-in fade-in duration-500">
