@@ -191,12 +191,12 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       candidateId: data.candidate_id,
       fileName: data.file_name || "Arquivo",
       fileType: data.file_type || "application/octet-stream",
-      fileFormat: data.file_format || "PDF",
-      fileSize: data.file_size || 0,
+      fileFormat: data.file_format || data.file_name?.split('.').pop() || "PDF",
+      fileSize: Number(data.file_size) || 0,
       category: data.category || "Outros",
-      observations: data.observations || "",
+      observations: data.observation || data.observations || "",
       user: data.user_name || "Sistema",
-      contentUrl: data.content_url || "",
+      contentUrl: data.storage_path || data.content_url || "",
       createdAt: data.created_at
     };
   }
@@ -923,12 +923,10 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
       candidate_id: data.candidateId,
       file_name: data.fileName,
       file_type: data.fileType,
-      file_format: data.fileFormat,
       file_size: data.fileSize,
       category: data.category,
-      observations: data.observations,
-      user_name: data.user,
-      content_url: data.contentUrl
+      observation: data.observations,
+      storage_path: data.contentUrl
     };
 
     if (data.id) insertData.id = data.id;
