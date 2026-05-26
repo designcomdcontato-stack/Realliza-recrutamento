@@ -36,7 +36,8 @@ type EnrichedCandidate = Candidate & {
 export default function CandidatesPage() {
   const { 
     candidates, loading: candidatesLoading, addCandidate, 
-    updateCandidate, deleteCandidate, bulkDeleteCandidates, anonymizeCandidate 
+    updateCandidate, deleteCandidate, bulkDeleteCandidates, anonymizeCandidate,
+    refresh
   } = useCandidates();
   
   const [applications, setApplications] = useState<Application[]>([]);
@@ -50,6 +51,146 @@ export default function CandidatesPage() {
   const [showBulkPhaseModal, setShowBulkPhaseModal] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Undo/Desfazer state
+  const [undoAction, setUndoAction] = useState<{
+    type: 'delete' | 'bulk_delete' | 'anonymize' | 'update_phase' | 'bulk_update_phase' | 'update_candidate';
+    description: string;
+    timestamp: number;
+    data: any;
+  } | null>(null);
+  const [showUndoToast, setShowUndoToast] = useState(false);
+  const [undoTimer, setUndoTimer] = useState(15);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerUndoableAction = (action: {
+    type: 'delete' | 'bulk_delete' | 'anonymize' | 'update_phase' | 'bulk_update_phase' | 'update_candidate';
+    description: string;
+    data: any;
+  }) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    
+    setUndoAction({
+      ...action,
+      timestamp: Date.now()
+    });
+    setShowUndoToast(true);
+    setUndoTimer(15);
+
+    timerRef.current = setInterval(() => {
+      setUndoTimer(prev => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setShowUndoToast(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleUndoClose = () => {
+    setShowUndoToast(false);
+    setUndoAction(null);
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const handleUndo = async () => {
+    if (!undoAction) return;
+
+    setGlobalLoading(true);
+    try {
+      switch (undoAction.type) {
+        case 'delete': {
+          const { candidate, applications: apps, documents: docs } = undoAction.data;
+          
+          await db.createCandidate(candidate);
+          
+          for (const app of apps) {
+            await db.createApplication(app);
+          }
+          
+          for (const doc of docs) {
+            await db.attachDocument(doc);
+          }
+          break;
+        }
+        case 'bulk_delete': {
+          const { candidates: candsToRestore, applications: apps, documents: docs } = undoAction.data;
+          
+          for (const cand of candsToRestore) {
+            await db.createCandidate(cand);
+          }
+          
+          for (const app of apps) {
+            await db.createApplication(app);
+          }
+          
+          for (const doc of docs) {
+            await db.attachDocument(doc);
+          }
+          break;
+        }
+        case 'anonymize': {
+          const { candidateId, originalData } = undoAction.data;
+          await db.updateCandidate(candidateId, originalData);
+          break;
+        }
+        case 'update_phase': {
+          const { applicationId, oldPhase } = undoAction.data;
+          await db.updateApplication(applicationId, { currentPhase: oldPhase });
+          break;
+        }
+        case 'bulk_update_phase': {
+          const { applicationsOldPhases } = undoAction.data;
+          for (const item of applicationsOldPhases) {
+            await db.updateApplication(item.id, { currentPhase: item.phase });
+          }
+          break;
+        }
+        case 'update_candidate': {
+          const { candidateId, originalData } = undoAction.data;
+          await db.updateCandidate(candidateId, originalData);
+          break;
+        }
+        default:
+          break;
+      }
+      
+      await refresh();
+      const appsData = await db.listApplications();
+      setApplications(appsData);
+      const docsData = await db.listAllDocuments();
+      setAllDocs(docsData);
+      
+      setUndoAction(null);
+      setShowUndoToast(false);
+    } catch (error) {
+      console.error("Desfazer falhou:", error);
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  // Keyboard shortcut (Ctrl+Z) for Undo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (showUndoToast && undoAction) {
+          e.preventDefault();
+          handleUndo();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showUndoToast, undoAction]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   // Filters state
   const [search, setSearch] = useState('');
@@ -250,6 +391,20 @@ export default function CandidatesPage() {
     if (!selectedCandidates.length) return;
     setBulkActionLoading(true);
     try {
+      const candidatesToRestore = candidates.filter(c => selectedCandidates.includes(c.id));
+      const relatedApps = applications.filter(a => selectedCandidates.includes(a.candidateId));
+      const relatedDocs = allDocs.filter(d => selectedCandidates.includes(d.candidateId));
+      
+      triggerUndoableAction({
+        type: 'bulk_delete',
+        description: `${selectedCandidates.length} candidatos excluídos em massa`,
+        data: {
+          candidates: candidatesToRestore,
+          applications: relatedApps,
+          documents: relatedDocs
+        }
+      });
+
       await bulkDeleteCandidates(selectedCandidates);
       setSelectedCandidates([]);
     } catch (error) {
@@ -268,6 +423,15 @@ export default function CandidatesPage() {
         .map(c => c.latestApplication!.id);
 
       if (applicationIds.length > 0) {
+        const oldApplications = applications.filter(a => applicationIds.includes(a.id));
+        triggerUndoableAction({
+          type: 'bulk_update_phase',
+          description: `Fase de ${applicationIds.length} candidatos alterada para ${phase}`,
+          data: {
+            applicationsOldPhases: oldApplications.map(a => ({ id: a.id, phase: a.currentPhase }))
+          }
+        });
+
         await db.bulkUpdateApplications(applicationIds, { currentPhase: phase });
       }
 
@@ -290,6 +454,17 @@ export default function CandidatesPage() {
 
   const handleUpdatePhase = async (appId: string, phase: ApplicationPhase) => {
     try {
+      const currentApp = applications.find(a => a.id === appId);
+      if (currentApp && currentApp.currentPhase !== phase) {
+        triggerUndoableAction({
+          type: 'update_phase',
+          description: `Fase alterada para ${phase}`,
+          data: {
+            applicationId: appId,
+            oldPhase: currentApp.currentPhase
+          }
+        });
+      }
       await db.updateApplication(appId, { currentPhase: phase });
       // Refresh local applications state
       const appsData = await db.listApplications();
@@ -408,6 +583,16 @@ export default function CandidatesPage() {
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-brand-dark whitespace-nowrap">Base de Talentos</h1>
         </div>
         <div className="flex items-center justify-center md:justify-end gap-3">
+          {undoAction && (
+            <button 
+              onClick={handleUndo}
+              className="flex items-center gap-2 bg-[#F49A9D]/15 hover:bg-[#F49A9D]/25 border border-[#F49A9D] text-brand-dark px-6 py-4 rounded-2xl transition-all text-xs font-bold shadow-sm animate-pulse shrink-0"
+              title={`Atalho: Ctrl+Z (${undoTimer}s)`}
+            >
+              <History size={18} className="text-brand-dark" />
+              Desfazer ({undoTimer}s)
+            </button>
+          )}
           <button 
             onClick={handleExportCSV}
             className="flex items-center gap-2 bg-white border border-border/50 text-brand-dark px-6 py-4 rounded-2xl transition-all hover:bg-gray-50 text-xs font-bold shadow-sm"
@@ -930,6 +1115,14 @@ export default function CandidatesPage() {
           onClose={() => setIsModalOpen(false)}
           onSave={async (data) => {
             if (editingCandidate) {
+              triggerUndoableAction({
+                type: 'update_candidate',
+                description: `Dados de ${editingCandidate.name} atualizados`,
+                data: {
+                  candidateId: editingCandidate.id,
+                  originalData: editingCandidate
+                }
+              });
               await updateCandidate(editingCandidate.id, data);
             } else {
               await addCandidate(data);
@@ -941,8 +1134,23 @@ export default function CandidatesPage() {
       {confirmDelete && (
         <ConfirmModal 
           title="Excluir Candidato?"
-          message="Esta ação é irreversível. Todos os dados, inscrições e documentos vinculados a este candidato serão removidos permanentemente."
+          message="Todos os dados, inscrições e documentos vinculados a este candidato serão removidos. Esta ação pode ser desfeita clicando em Desfazer ou usando Ctrl+Z."
           onConfirm={async () => {
+            const candidateToDelete = candidates.find(c => c.id === confirmDelete);
+            if (candidateToDelete) {
+              const relatedApps = applications.filter(a => a.candidateId === confirmDelete);
+              const relatedDocs = allDocs.filter(d => d.candidateId === confirmDelete);
+              
+              triggerUndoableAction({
+                type: 'delete',
+                description: `Candidato ${candidateToDelete.name} excluído`,
+                data: {
+                  candidate: candidateToDelete,
+                  applications: relatedApps,
+                  documents: relatedDocs
+                }
+              });
+            }
             await deleteCandidate(confirmDelete);
             setConfirmDelete(null);
           }}
@@ -955,8 +1163,19 @@ export default function CandidatesPage() {
       {confirmAnonymize && (
         <ConfirmModal 
           title="Anonimizar Candidato?"
-          message="Os dados pessoais (Nome, E-mail, Telefone) serão substituídos por informações genéricas para proteger a privacidade, mas as experiências e histórico serão mantidos."
+          message="Os dados pessoais (Nome, E-mail, Telefone) serão substituídos por informações genéricas para proteger a privacidade, mas as experiências e histórico serão mantidos. Esta ação pode ser desfeita clicando em Desfazer ou usando Ctrl+Z."
           onConfirm={async () => {
+            const origCandidate = candidates.find(c => c.id === confirmAnonymize);
+            if (origCandidate) {
+              triggerUndoableAction({
+                type: 'anonymize',
+                description: `Candidato ${origCandidate.name} anonimizado`,
+                data: {
+                  candidateId: confirmAnonymize,
+                  originalData: origCandidate
+                }
+              });
+            }
             await anonymizeCandidate(confirmAnonymize);
             setConfirmAnonymize(null);
           }}
@@ -1100,10 +1319,58 @@ export default function CandidatesPage() {
             setShowBulkDeleteConfirm(false);
           }}
           title="Exclusão em Massa"
-          message={`Tem certeza que deseja excluir permanentemente ${selectedCandidates.length} candidatos selecionados? Esta ação não poderá ser desfeita.`}
+          message={`Tem certeza que deseja excluir permanentemente ${selectedCandidates.length} candidatos selecionados? Esta ação poderá ser desfeita usando o botão superior ou o comando Ctrl+Z.`}
           confirmText="Sim, Excluir Todos"
         />
       )}
+
+      {/* Floating Undo notification toast/banner with active countdown bar */}
+      <AnimatePresence>
+        {showUndoToast && undoAction && (
+          <motion.div 
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-24 right-8 z-[120] bg-brand-dark text-white rounded-2xl shadow-2xl p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 border border-white/10 max-w-sm w-full font-sans"
+          >
+            <div className="flex items-center gap-3 w-full">
+              <div className="w-10 h-10 bg-[#F49A9D] text-brand-dark rounded-xl flex items-center justify-center font-bold">
+                <History size={20} />
+              </div>
+              <div className="flex-1 flex flex-col min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-[#F49A9D]">Ação realizada</p>
+                <p className="text-xs font-bold text-white/90 truncate">{undoAction.description}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 mt-3 md:mt-0 justify-end">
+              <button 
+                onClick={handleUndo}
+                className="px-4 py-2 bg-[#F49A9D] hover:bg-[#F49A9D]/90 text-brand-dark text-xs font-black transition-all rounded-xl shadow-lg flex items-center gap-1 shrink-0"
+              >
+                Desfazer
+                <span className="hidden md:inline opacity-60 text-[10px] bg-brand-dark/10 px-1 py-0.5 rounded ml-1">Ctrl+Z</span>
+              </button>
+              <button 
+                onClick={handleUndoClose}
+                className="p-2 hover:bg-white/10 text-white/60 hover:text-white rounded-lg transition-all"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            {/* Visual timer line indicator */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 rounded-b-2xl overflow-hidden">
+              <motion.div 
+                key={undoAction.timestamp}
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: 15, ease: "linear" }}
+                className="h-full bg-[#F49A9D]"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
