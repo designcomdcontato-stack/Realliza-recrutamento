@@ -20,6 +20,7 @@ import {
 import { ptBR } from 'date-fns/locale';
 import CandidateChart from '@/components/CandidateChart';
 import { DocumentViewer } from '@/components/DocumentViewer';
+import { exportService } from '@/services/exportService';
 
 export default function AgendaPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -264,6 +265,36 @@ export default function AgendaPage() {
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
+  const handleExportCSV = () => {
+    const dataToExport = allEvents.map(ev => {
+      const candidate = candidates.find(c => c.id === ev.candidateId);
+      
+      let formattedDate = ev.date;
+      try {
+        if (ev.date) {
+          formattedDate = format(parseISO(ev.date), 'dd/MM/yyyy');
+        }
+      } catch (e) {
+        console.error("Erro ao formatar data:", ev.date, e);
+      }
+
+      return {
+        'Candidato': ev.candidateName || 'N/A',
+        'Telefone': candidate?.phone || 'N/A',
+        'WhatsApp': candidate?.whatsapp || 'N/A',
+        'E-mail': candidate?.email || 'N/A',
+        'Cidade': candidate?.city || 'N/A',
+        'Vaga': ev.jobTitle || 'N/A',
+        'Data do Agendamento': formattedDate || 'N/A',
+        'Horário': ev.time || 'N/A',
+        'Canal de Origem': candidate?.origin || 'N/A',
+        'Tipo de Entrevista': ev.type || 'N/A',
+        'Status': ev.status || 'N/A'
+      };
+    });
+    exportService.downloadCSV('agendamentos-realliza', dataToExport);
+  };
+
   const handleSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!schedulingApp) return;
@@ -327,6 +358,13 @@ export default function AgendaPage() {
           <p className="text-muted-foreground font-medium">Gerencie seus agendamentos e compromissos.</p>
         </div>
         <div className="flex items-center justify-center md:justify-end gap-3">
+           <button 
+             onClick={handleExportCSV}
+             className="px-6 py-3 bg-white border border-border/50 text-brand-dark rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm"
+           >
+             <Download size={16} />
+             Exportar
+           </button>
            <button 
              onClick={() => setIsModalOpen(true)}
              className="px-6 py-3 bg-brand-coral text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:opacity-90 transition-all shadow-xl shadow-brand-coral/20"
