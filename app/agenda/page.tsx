@@ -273,7 +273,7 @@ export default function AgendaPage() {
       await db.updateApplication(schedulingApp.id, {
         interviewDate: formData.date,
         interviewTime: formData.time,
-        currentPhase: ApplicationPhase.INTERVIEW,
+        currentPhase: ApplicationPhase.SCHEDULING,
         currentStatus: ApplicationStatus.SCHEDULED
       });
 
