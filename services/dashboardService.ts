@@ -68,9 +68,52 @@ export const dashboardService = {
     const filteredAppIds = new Set(filteredApps.map(app => app.id));
     const appInterviews = allInterviews.filter(i => filteredAppIds.has(i.applicationId));
     
-    const scheduledInterviews = appInterviews.filter(i => i.status === "Agendado" || i.status === "Reagendado").length;
-    const performedInterviews = appInterviews.filter(i => i.status === "Realizado").length;
-    const noShows = appInterviews.filter(i => i.status === "Não Compareceu").length;
+    // Standalone interviews mapped by application ID
+    const appsWithStandaloneInterview = new Set(appInterviews.map(i => i.applicationId));
+
+    // 1. Scheduled Interviews (Agendados)
+    let scheduledInterviews = appInterviews.filter(i => 
+      i.status === "Agendado" || i.status === "Reagendado"
+    ).length;
+
+    // Plus apps that don't have standalone interviews but have scheduled status
+    const scheduledAppsWithoutStandalone = filteredApps.filter(app => 
+      !appsWithStandaloneInterview.has(app.id) && 
+      (app.currentStatus === ApplicationStatus.SCHEDULED || 
+       app.currentStatus === ApplicationStatus.RESCHEDULED ||
+       app.currentStatus?.toLowerCase() === "agendado" ||
+       app.currentStatus?.toLowerCase() === "reagendado" ||
+       (app.interviewDate && app.currentPhase === ApplicationPhase.SCHEDULING))
+    );
+    scheduledInterviews += scheduledAppsWithoutStandalone.length;
+
+    // 2. Performed Interviews (Realizados)
+    let performedInterviews = appInterviews.filter(i => 
+      i.status === "Realizado"
+    ).length;
+
+    // Plus apps that don't have standalone interviews but have done statuses
+    const performedAppsWithoutStandalone = filteredApps.filter(app => 
+      !appsWithStandaloneInterview.has(app.id) && 
+      (app.currentStatus === ApplicationStatus.INTERVIEW_DONE ||
+       app.currentStatus?.toLowerCase() === "entrevista realizada" ||
+       [ApplicationStatus.APPROVED, ApplicationStatus.HIRING_PROCESS, ApplicationStatus.HIRED].includes(app.currentStatus) ||
+       (app.interviewDate && app.currentPhase !== ApplicationPhase.NEW && app.currentPhase !== ApplicationPhase.SCHEDULING && app.currentStatus !== ApplicationStatus.NO_SHOW))
+    );
+    performedInterviews += performedAppsWithoutStandalone.length;
+
+    // 3. No Shows (Não compareceram)
+    let noShows = appInterviews.filter(i => 
+      i.status === "Não Compareceu"
+    ).length;
+
+    const noShowsAppsWithoutStandalone = filteredApps.filter(app => 
+      !appsWithStandaloneInterview.has(app.id) && 
+      (app.currentStatus === ApplicationStatus.NO_SHOW ||
+       app.currentStatus?.toLowerCase() === "não compareceu" ||
+       app.currentStatus?.toLowerCase() === "nao compareceu")
+    );
+    noShows += noShowsAppsWithoutStandalone.length;
     
     const rejected = filteredApps.filter(app => app.currentStatus === ApplicationStatus.REJECTED).length;
     const hired = filteredApps.filter(app => app.currentStatus === ApplicationStatus.HIRED).length;
@@ -84,12 +127,16 @@ export const dashboardService = {
     }).length;
 
     // Rates
-    const attendanceRate = appInterviews.length > 0 
+    const attendanceRate = (performedInterviews + noShows) > 0 
       ? (performedInterviews / (performedInterviews + noShows)) * 100 
       : 0;
     
+    const approvedCandidatesCount = filteredApps.filter(app => 
+      [ApplicationStatus.APPROVED, ApplicationStatus.HIRING_PROCESS, ApplicationStatus.HIRED].includes(app.currentStatus)
+    ).length;
+
     const approvalRate = performedInterviews > 0 
-      ? (filteredApps.filter(app => [ApplicationStatus.APPROVED, ApplicationStatus.HIRING_PROCESS, ApplicationStatus.HIRED].includes(app.currentStatus)).length / performedInterviews) * 100 
+      ? Math.min(100, (approvedCandidatesCount / performedInterviews) * 100)
       : 0;
       
     const hiringRate = totalApplications > 0 ? (hired / totalApplications) * 100 : 0;
