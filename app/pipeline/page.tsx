@@ -39,6 +39,7 @@ export default function PipelinePage() {
   
   const [search, setSearch] = useState('');
   const [moveModal, setMoveModal] = useState<{ app: any, targetPhase: ApplicationPhase } | null>(null);
+  const [statusOnlyApp, setStatusOnlyApp] = useState<any | null>(null);
   const [phaseSelectorApp, setPhaseSelectorApp] = useState<any | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedPhaseForAdd, setSelectedPhaseForAdd] = useState<ApplicationPhase>(ApplicationPhase.NEW);
@@ -258,6 +259,21 @@ export default function PipelinePage() {
     setIsHiringFormOpen(false);
   };
 
+  const handleUpdateStatusOnly = async (status: ApplicationStatus) => {
+    if (!statusOnlyApp) return;
+    
+    const oldStatus = statusOnlyApp.currentStatus;
+    
+    await updateApplication(statusOnlyApp.id, {
+      currentStatus: status
+    });
+    
+    await historyService.logStatusChange(statusOnlyApp.candidateId, statusOnlyApp.id, oldStatus, status);
+
+    setStatusOnlyApp(null);
+    refreshApplications();
+  };
+
   if (loadingApps) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-brand-dark animate-pulse">
       <LayoutGrid size={48} className="mb-4 opacity-20" />
@@ -456,10 +472,19 @@ export default function PipelinePage() {
                            <div className="w-8 h-8 rounded-xl bg-brand-bg flex items-center justify-center text-[10px] font-black text-brand-dark border border-border shadow-inner">
                              {app.candidate?.name?.[0]}
                            </div>
-                           <div className="flex flex-col">
-                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-tighter">Status</span>
+                           <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setStatusOnlyApp(app);
+                             }}
+                             className="flex flex-col items-start hover:opacity-80 transition-opacity text-left group/status cursor-pointer outline-none"
+                             title="Alterar apenas o status deste candidato"
+                           >
+                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-tighter flex items-center gap-1 group-hover/status:text-brand-coral transition-colors">
+                                Status <Edit2 size={8} />
+                              </span>
                               <span className="text-[10px] font-black uppercase text-brand-coral">{app.currentStatus}</span>
-                           </div>
+                           </button>
                         </div>
                         <div className="flex items-center gap-1">
                           {!app.interviewDate && phase === ApplicationPhase.SCHEDULING && (
@@ -707,6 +732,57 @@ export default function PipelinePage() {
                    CANCELAR
                 </button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* Small Status-Only Update Modal */}
+      {statusOnlyApp && (
+        <div className="fixed inset-0 bg-brand-dark/60 backdrop-blur-md flex items-center justify-center z-50 p-4 font-sans text-brand-dark">
+          <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 p-8 border border-brand-coral/20">
+            <div className="flex justify-between items-center mb-6">
+               <div>
+                 <h3 className="text-2xl font-black text-brand-dark tracking-tight">Alterar Status</h3>
+                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Alterar apenas o status sem mudar de fase</p>
+               </div>
+               <button onClick={() => setStatusOnlyApp(null)} className="p-2 hover:bg-brand-bg rounded-xl transition-all">
+                 <X size={24} className="text-muted-foreground" />
+               </button>
+            </div>
+
+            <div className="bg-brand-bg/60 p-5 rounded-3xl mb-6 border border-border/50">
+               <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-brand-dark text-white rounded-2xl flex items-center justify-center font-black animate-scale-up">
+                     {statusOnlyApp.candidate?.name?.[0]}
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-brand-dark leading-none mb-1">{statusOnlyApp.candidate?.name}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Fase atual: {statusOnlyApp.currentPhase}</p>
+                  </div>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">SELECIONE O NOVO STATUS</label>
+              <div className="grid grid-cols-2 gap-2 max-h-[350px] overflow-y-auto pr-1 no-scrollbar">
+                {Object.values(ApplicationStatus).filter(s => s !== ApplicationStatus.INACTIVE).map(status => (
+                  <button 
+                    key={status}
+                    type="button"
+                    onClick={() => handleUpdateStatusOnly(status)}
+                    className={cn(
+                      "px-4 py-3 rounded-2xl border text-[11px] font-extrabold hover:border-brand-coral hover:bg-brand-bg transition-all uppercase text-left flex justify-between items-center bg-white",
+                      statusOnlyApp.currentStatus === status 
+                        ? "bg-brand-coral/10 border-brand-coral text-brand-coral" 
+                        : "border-border text-brand-dark"
+                    )}
+                  >
+                    <span className="truncate">{status}</span>
+                    {statusOnlyApp.currentStatus === status && <CheckCircle2 size={13} className="text-brand-coral shrink-0 ml-1" />}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
