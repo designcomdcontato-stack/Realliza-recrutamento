@@ -7,7 +7,7 @@ import {
   Trash2, Edit2, ChevronLeft, History,
   CheckCircle2, AlertCircle, X, Download,
   ExternalLink, MessageSquare, Clipboard,
-  MoreHorizontal, Info, Sparkles
+  MoreHorizontal, Info, Sparkles, Upload, Eye
 } from 'lucide-react';
 import { useCandidates } from '@/hooks/useCandidates';
 import { useApplications } from '@/hooks/useApplications';
@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { CandidateModal } from '@/components/CandidateModal';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { DocumentViewer } from '@/components/DocumentViewer';
 
 export default function CandidateDetailsPage() {
   const { id } = useParams() as { id: string };
@@ -39,6 +40,9 @@ export default function CandidateDetailsPage() {
   const [newAppData, setNewAppData] = useState({ jobId: '', channel: 'Manual', observations: '' });
   
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileBase64, setFileBase64] = useState<string>('');
+  const [viewingDocument, setViewingDocument] = useState<CandidateDocument | null>(null);
 
   useEffect(() => {
     const candidateData = candidates.find(c => c.id === id);
@@ -64,25 +68,40 @@ export default function CandidateDetailsPage() {
 
   const handleAddDocument = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!selectedFile) {
+      alert("Por favor, selecione ou envie um arquivo primeiro.");
+      return;
+    }
     const formData = new FormData(e.currentTarget);
-    const fileName = formData.get('fileName') as string;
     const category = formData.get('category') as any;
     
-    if (!fileName) return;
+    const format = selectedFile.name.split('.').pop()?.toLowerCase() || 'pdf';
+    let detectedType = selectedFile.type;
+    if (!detectedType) {
+      if (format === 'pdf') detectedType = 'application/pdf';
+      else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(format)) detectedType = `image/${format === 'jpg' ? 'jpeg' : format}`;
+      else if (format === 'txt') detectedType = 'text/plain';
+      else if (format === 'doc') detectedType = 'application/msword';
+      else if (format === 'docx') detectedType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      else detectedType = 'application/octet-stream';
+    }
 
     await db.attachDocument({
       candidateId: id,
-      fileName,
-      fileType: 'Manual',
-      fileFormat: 'PDF',
-      fileSize: 1024,
+      fileName: selectedFile.name,
+      fileType: detectedType,
+      fileFormat: format,
+      fileSize: selectedFile.size,
       category,
       observations: formData.get('observations') as string || '',
-      user: 'Administrador'
+      user: 'Administrador',
+      contentUrl: fileBase64
     });
 
-    await historyService.logDocumentAttached(id, fileName);
+    await historyService.logDocumentAttached(id, selectedFile.name);
     fetchRelatedData();
+    setSelectedFile(null);
+    setFileBase64('');
     (e.target as HTMLFormElement).reset();
   };
 
@@ -412,17 +431,33 @@ export default function CandidateDetailsPage() {
                   <h4 className="font-bold mb-4">Anexar Novo Documento</h4>
                   <form onSubmit={handleAddDocument} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">NOME DO DOCUMENTO</label>
-                      <input 
-                        name="fileName"
-                        required
-                        className="w-full px-4 py-2 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 text-sm"
-                        placeholder="Ex: Curriculo_Joao.pdf"
-                      />
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">SELECIONAR ARQUIVO</label>
+                      <label className="flex items-center justify-between gap-1.5 px-4 py-2 bg-white text-brand-dark border border-border rounded-xl text-sm font-medium hover:border-brand-coral cursor-pointer transition-all h-[42px]">
+                        <span className="truncate max-w-[150px] md:max-w-[200px]">
+                          {selectedFile ? selectedFile.name : "Selecionar..."}
+                        </span>
+                        <Upload size={14} className="text-muted-foreground shrink-0" />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".pdf,.doc,.docx,.png,.jpeg,.jpg,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,text/plain"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setSelectedFile(file);
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                setFileBase64(ev.target?.result as string || '');
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground block mb-1">CATEGORIA</label>
-                      <select name="category" className="w-full px-4 py-2 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 text-sm bg-white">
+                      <select name="category" className="w-full px-4 py-2 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 text-sm bg-white h-[42px]">
                         <option value="Currículo">Currículo</option>
                         <option value="Documento pessoal">Documento pessoal</option>
                         <option value="Comprovante">Comprovante</option>
@@ -450,23 +485,45 @@ export default function CandidateDetailsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {documents.map(doc => (
                     <div key={doc.id} className="bg-white border border-border/50 p-4 rounded-2xl flex items-center gap-4 group">
-                      <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center cursor-pointer max-xs:w-10 max-xs:h-10" onClick={() => setViewingDocument(doc)}>
                         <FileText size={24} />
                       </div>
-                      <div className="flex-1 overflow-hidden">
+                      <div className="flex-1 overflow-hidden cursor-pointer" onClick={() => setViewingDocument(doc)}>
                         <p className="font-bold text-sm truncate">{doc.fileName}</p>
                         <p className="text-[10px] text-muted-foreground uppercase font-bold">{doc.category} • {doc.fileFormat}</p>
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                        <button className="p-1.5 hover:bg-brand-bg rounded-lg text-muted-foreground hover:text-brand-dark">
+                        <button 
+                          type="button"
+                          onClick={() => setViewingDocument(doc)}
+                          className="p-1.5 hover:bg-brand-bg rounded-lg text-muted-foreground hover:text-brand-dark"
+                          title="Visualizar documento"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            if (doc.contentUrl) {
+                              const link = window.document.createElement('a');
+                              link.href = doc.contentUrl;
+                              link.download = doc.fileName;
+                              link.click();
+                            }
+                          }}
+                          className="p-1.5 hover:bg-brand-bg rounded-lg text-muted-foreground hover:text-brand-dark"
+                          title="Baixar documento"
+                        >
                           <Download size={16} />
                         </button>
                         <button 
+                          type="button"
                           onClick={async () => {
                             await db.deleteDocument(doc.id);
                             fetchRelatedData();
                           }}
-                          className="p-1.5 hover:bg-rose-50 rounded-lg text-muted-foreground hover:text-rose-600"
+                          className="p-1.5 hover:bg-rose-50 rounded-lg text-rose-500 hover:text-rose-600"
+                          title="Excluir documento"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -668,6 +725,18 @@ export default function CandidateDetailsPage() {
           onCancel={() => setConfirmDelete(false)}
           variant="danger"
           confirmText="Sim, Excluir Tudo"
+        />
+      )}
+
+      {viewingDocument && (
+        <DocumentViewer 
+          document={viewingDocument}
+          onClose={() => setViewingDocument(null)}
+          onDelete={async (docId) => {
+            await db.deleteDocument(docId);
+            fetchRelatedData();
+            setViewingDocument(null);
+          }}
         />
       )}
     </div>

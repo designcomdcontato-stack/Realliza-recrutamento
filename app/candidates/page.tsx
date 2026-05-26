@@ -310,11 +310,22 @@ export default function CandidatesPage() {
         reader.readAsDataURL(file);
       });
 
+      const format = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+      let detectedType = file.type;
+      if (!detectedType) {
+        if (format === 'pdf') detectedType = 'application/pdf';
+        else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(format)) detectedType = `image/${format === 'jpg' ? 'jpeg' : format}`;
+        else if (format === 'txt') detectedType = 'text/plain';
+        else if (format === 'doc') detectedType = 'application/msword';
+        else if (format === 'docx') detectedType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        else detectedType = 'application/octet-stream';
+      }
+
       await db.attachDocument({
         candidateId,
         fileName: file.name,
-        fileType: file.type,
-        fileFormat: file.name.split('.').pop() || 'pdf',
+        fileType: detectedType,
+        fileFormat: format,
         fileSize: file.size,
         category: 'Currículo',
         observations: 'Enviado via tabela rápida',
@@ -807,7 +818,7 @@ export default function CandidatesPage() {
                           <input 
                             type="file" 
                             className="hidden" 
-                            accept=".pdf,.doc,.docx,.png,.jpeg,.jpg"
+                            accept=".pdf,.doc,.docx,.png,.jpeg,.jpg,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,text/plain"
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) handleUploadResume(c.id, file);

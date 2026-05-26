@@ -13,8 +13,42 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({ document, onClose, onDelete }: DocumentViewerProps) {
-  const isImage = document.fileType.startsWith('image/');
-  const isPDF = document.fileType === 'application/pdf';
+  const [txtContent, setTxtContent] = React.useState<string | null>(null);
+
+  const formatExt = document.fileFormat?.toLowerCase() || '';
+  const isImage = (document.fileType && document.fileType.startsWith('image/')) || 
+    ['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(formatExt) || 
+    /\.(png|jpg|jpeg|gif|svg)$/i.test(document.fileName);
+
+  const isPDF = document.fileType === 'application/pdf' || 
+    formatExt === 'pdf' || 
+    document.fileName.toLowerCase().endsWith('.pdf');
+
+  const isTxt = document.fileType === 'text/plain' || 
+    formatExt === 'txt' || 
+    document.fileName.toLowerCase().endsWith('.txt');
+
+  React.useEffect(() => {
+    if (isTxt && document.contentUrl) {
+      try {
+        const base64Parts = document.contentUrl.split(',');
+        if (base64Parts.length > 1) {
+          // Decode Base64 correctly handling UTF-8 special characters
+          const decoded = decodeURIComponent(escape(atob(base64Parts[1])));
+          setTxtContent(decoded);
+        } else {
+          if (document.contentUrl.startsWith('data:')) {
+            setTxtContent("Formato de conteúdo não suportado.");
+          } else {
+            setTxtContent(document.contentUrl);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to decode base64 txt file:", e);
+        setTxtContent("Não foi possível carregar o conteúdo do arquivo de texto.");
+      }
+    }
+  }, [isTxt, document.contentUrl]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-8">
@@ -97,6 +131,10 @@ export function DocumentViewer({ document, onClose, onDelete }: DocumentViewerPr
                   className="w-full h-full border-none"
                   title="PDF Viewer"
                 />
+              ) : isTxt ? (
+                <div className="w-full h-full p-8 overflow-auto font-mono text-sm text-left bg-[#FCFBF9] text-brand-dark whitespace-pre-wrap select-text leading-relaxed">
+                  {txtContent || 'Carregando conteúdo...'}
+                </div>
               ) : (
                 <div className="text-center p-12">
                   <div className="w-20 h-20 bg-brand-bg rounded-3xl flex items-center justify-center mx-auto mb-6 text-brand-coral">
