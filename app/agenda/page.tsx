@@ -6,11 +6,12 @@ import {
   Clock, MapPin, User, Briefcase,
   Plus, CalendarDays, MoreVertical,
   CheckCircle2, X, AlertCircle,
-  Sparkles, Search, Trash2, Edit3, MessageSquare
+  Sparkles, Search, Trash2, Edit3, MessageSquare,
+  Upload, Download, FileText, Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db } from '@/database/db';
-import { Candidate, Application, Job, ApplicationPhase, Interview, ApplicationStatus } from '@/types';
+import { Candidate, Application, Job, ApplicationPhase, Interview, ApplicationStatus, CandidateDocument } from '@/types';
 import { 
   format, addMonths, subMonths, startOfMonth, endOfMonth, 
   startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, 
@@ -18,12 +19,16 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import CandidateChart from '@/components/CandidateChart';
+import { DocumentViewer } from '@/components/DocumentViewer';
 
 export default function AgendaPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [apps, setApps] = useState<Application[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [standaloneInterviews, setStandaloneInterviews] = useState<Interview[]>([]);
+  const [allDocs, setAllDocs] = useState<CandidateDocument[]>([]);
+  const [candidateDocs, setCandidateDocs] = useState<CandidateDocument[]>([]);
+  const [viewingDocument, setViewingDocument] = useState<CandidateDocument | null>(null);
   const [loading, setLoading] = useState(true);
   
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -43,22 +48,37 @@ export default function AgendaPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [candData, appData, jobsData, interviewData] = await Promise.all([
+    const [candData, appData, jobsData, interviewData, docsData] = await Promise.all([
       db.listCandidates(),
       db.listApplications(),
       db.listJobs(),
-      db.listInterviews()
+      db.listInterviews(),
+      db.listAllDocuments()
     ]);
     setCandidates(candData);
     setApps(appData);
     setJobs(jobsData);
     setStandaloneInterviews(interviewData);
+    setAllDocs(docsData || []);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (schedulingApp) {
+      db.listDocuments(schedulingApp.candidateId).then(docs => {
+        setCandidateDocs(docs);
+      }).catch(err => {
+        console.error("Erro ao carregar documentos do candidato:", err);
+        setCandidateDocs([]);
+      });
+    } else {
+      setCandidateDocs([]);
+    }
+  }, [schedulingApp]);
 
   const allEvents = useMemo(() => {
     const list: any[] = [];
@@ -538,6 +558,50 @@ export default function AgendaPage() {
                     <p className="text-[11px] font-black text-muted-foreground uppercase flex items-center gap-2">
                         <Briefcase size={12} /> {ev.jobTitle}
                     </p>
+                    
+                    {/* Exibir anexo do currículo do candidato */}
+                    {(() => {
+                      const resumes = allDocs.filter(d => d.candidateId === ev.candidateId && d.category === 'Currículo');
+                      if (resumes.length === 0) return null;
+                      return (
+                        <div className="mt-2 flex flex-col gap-1 bg-brand-bg/50 p-2.5 rounded-xl border border-border/20">
+                          <p className="text-[9px] font-black uppercase text-brand-dark/40 tracking-wider">Currículo</p>
+                          {resumes.map(doc => (
+                            <div key={doc.id} className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-brand-dark truncate pr-2" title={doc.fileName}>
+                                {doc.fileName}
+                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button 
+                                  type="button"
+                                  onClick={() => setViewingDocument(doc)}
+                                  className="p-1 hover:bg-white text-muted-foreground hover:text-brand-dark rounded transition-colors"
+                                  title="Visualizar currículo"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    if (doc.contentUrl) {
+                                      const link = window.document.createElement('a');
+                                      link.href = doc.contentUrl;
+                                      link.download = doc.fileName;
+                                      link.click();
+                                    }
+                                  }}
+                                  className="p-1 hover:bg-white text-muted-foreground hover:text-brand-dark rounded transition-colors"
+                                  title="Baixar currículo"
+                                >
+                                  <Download size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     <div className={cn(
                         "inline-flex text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border",
                         ev.status === 'Realizado' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
@@ -687,6 +751,124 @@ export default function AgendaPage() {
                 </select>
               </div>
 
+              {/* Seção de Currículo / Anexos do Candidato */}
+              {schedulingApp && (
+                <div className="space-y-3 bg-brand-bg/50 p-5 rounded-3xl border border-border/40 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-brand-dark ml-1">
+                      Currículo / Anexo do Candidato
+                    </label>
+                    
+                    {/* Botão para Inserir Currículo */}
+                    <label className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-brand-coral cursor-pointer hover:underline">
+                      <Upload size={13} />
+                      Inserir Currículo
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept=".pdf,.doc,.docx,.png,.jpeg,.jpg,.txt"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file && schedulingApp) {
+                            const format = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+                            let detectedType = file.type;
+                            if (!detectedType) {
+                              if (format === 'pdf') detectedType = 'application/pdf';
+                              else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(format)) detectedType = `image/${format === 'jpg' ? 'jpeg' : format}`;
+                              else if (format === 'txt') detectedType = 'text/plain';
+                              else if (format === 'doc') detectedType = 'application/msword';
+                              else if (format === 'docx') detectedType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                              else detectedType = 'application/octet-stream';
+                            }
+                            
+                            const reader = new FileReader();
+                            reader.onload = async (ev) => {
+                              const base64 = ev.target?.result as string || '';
+                              try {
+                                const newDoc = await db.attachDocument({
+                                  candidateId: schedulingApp.candidateId,
+                                  fileName: file.name,
+                                  fileType: detectedType,
+                                  fileFormat: format,
+                                  fileSize: file.size,
+                                  category: 'Currículo',
+                                  observations: 'Anexado via Agenda',
+                                  user: 'Administrador',
+                                  contentUrl: base64
+                                });
+                                
+                                // Registrar histórico do anexo
+                                await db.addHistory({
+                                  candidateId: schedulingApp.candidateId,
+                                  applicationId: schedulingApp.id,
+                                  type: "Documento",
+                                  description: `Currículo anexado via Agenda: ${file.name}`,
+                                  user: "Administrador"
+                                });
+
+                                // Atualizar estados locais
+                                setCandidateDocs(prev => [...prev, newDoc]);
+                                setAllDocs(prev => [...prev, newDoc]);
+                              } catch (err) {
+                                console.error("Falha ao anexar currículo:", err);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {candidateDocs.filter(d => d.category === 'Currículo').length > 0 ? (
+                    <div className="space-y-2">
+                      {candidateDocs.filter(d => d.category === 'Currículo').map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between text-xs bg-white p-3 rounded-2xl border border-border/30 hover:shadow-sm transition-all">
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <FileText size={16} className="text-brand-coral shrink-0" />
+                            <span className="font-bold text-brand-dark truncate" title={doc.fileName}>
+                              {doc.fileName}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground font-black uppercase shrink-0">
+                              ({doc.fileFormat})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button 
+                              type="button"
+                              onClick={() => setViewingDocument(doc)}
+                              className="p-1.5 hover:bg-brand-bg text-muted-foreground hover:text-brand-dark rounded-lg transition-all"
+                              title="Visualizar currículo"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                if (doc.contentUrl) {
+                                  const link = window.document.createElement('a');
+                                  link.href = doc.contentUrl;
+                                  link.download = doc.fileName;
+                                  link.click();
+                                }
+                              }}
+                              className="p-1.5 hover:bg-brand-bg text-muted-foreground hover:text-brand-dark rounded-lg transition-all"
+                              title="Baixar currículo"
+                            >
+                              <Download size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 bg-white/60 rounded-2xl border border-dashed border-border/50 text-[11px] font-bold text-muted-foreground">
+                      Nenhum currículo anexado. Use o botão &ldquo;Inserir Currículo&rdquo; acima para anexar um arquivo.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Data</label>
@@ -755,6 +937,29 @@ export default function AgendaPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Visualizador de documentos/currículo em overlay */}
+      {viewingDocument && (
+        <DocumentViewer 
+          document={viewingDocument}
+          onClose={() => setViewingDocument(null)}
+          onDelete={async (docId) => {
+            try {
+              await db.deleteDocument(docId);
+              setViewingDocument(null);
+              // Atualizar listas locais
+              if (schedulingApp) {
+                const docs = await db.listDocuments(schedulingApp.candidateId);
+                setCandidateDocs(docs);
+              }
+              const allDocsData = await db.listAllDocuments();
+              setAllDocs(allDocsData || []);
+            } catch (err) {
+              console.error("Erro ao deletar documento na agenda:", err);
+            }
+          }}
+        />
       )}
     </div>
   );
