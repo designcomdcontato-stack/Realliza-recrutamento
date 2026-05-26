@@ -385,7 +385,14 @@ export default function PipelinePage() {
                         </div>
                       </div>
                     
-                    <h4 className="font-extrabold text-brand-dark mb-1 leading-tight line-clamp-1">{app.candidate?.name}</h4>
+                    <h4 className="font-extrabold text-brand-dark mb-1 leading-tight line-clamp-1">
+                      <Link 
+                        href={`/candidates/${app.candidateId || app.candidate?.id}`}
+                        className="hover:text-brand-coral hover:underline transition-colors cursor-pointer"
+                      >
+                        {app.candidate?.name}
+                      </Link>
+                    </h4>
                     <p className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-1.5 mb-2">
                       <Briefcase size={12} /> {app.job?.title}
                     </p>
