@@ -126,30 +126,42 @@ export default function SettingsPage() {
 
    const addPhase = async () => {
     if (!newPhaseName.trim() || !localSettings) return;
-    const newPhase = {
-      id: newPhaseName.trim(),
-      name: newPhaseName.trim(),
-      color: newPhaseColor,
-      order: localSettings.phases.length
-    };
-    const updated = {
-      ...localSettings,
-      phases: [...localSettings.phases, newPhase]
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
-    setNewPhaseName('');
-    setNewPhaseColor('#BFDBFE');
+    try {
+      const phasesList = localSettings.phases || [];
+      const newPhase = {
+        id: newPhaseName.trim(),
+        name: newPhaseName.trim(),
+        color: newPhaseColor,
+        order: phasesList.length
+      };
+      const updated = {
+        ...localSettings,
+        phases: [...phasesList, newPhase]
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+      setNewPhaseName('');
+      setNewPhaseColor('#BFDBFE');
+    } catch (err: any) {
+      console.error("Erro ao adicionar fase:", err);
+      alert("Não foi possível salvar a nova fase no banco de dados. " + (err.message || err));
+    }
   };
 
   const removePhase = async (id: string) => {
     if (!localSettings) return;
-    const updated = {
-      ...localSettings,
-      phases: localSettings.phases.filter(p => p.id !== id)
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
+    try {
+      const phasesList = localSettings.phases || [];
+      const updated = {
+        ...localSettings,
+        phases: phasesList.filter(p => p.id !== id)
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+    } catch (err: any) {
+      console.error("Erro ao remover fase:", err);
+      alert("Não foi possível excluir a fase. " + (err.message || err));
+    }
   };
 
   const startEditPhase = (phase: any) => {
@@ -161,46 +173,64 @@ export default function SettingsPage() {
 
   const saveEditPhase = async () => {
     if (!editingPhaseId || !editingPhaseName.trim() || !localSettings) return;
-    const updated = {
-      ...localSettings,
-      phases: localSettings.phases.map(p => 
-        p.id === editingPhaseId 
-          ? { ...p, name: editingPhaseName.trim(), color: editingPhaseColor, order: editingPhaseOrder } 
-          : p
-      )
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
-    setEditingPhaseId(null);
+    try {
+      const phasesList = localSettings.phases || [];
+      const updated = {
+        ...localSettings,
+        phases: phasesList.map(p => 
+          p.id === editingPhaseId 
+            ? { ...p, name: editingPhaseName.trim(), color: editingPhaseColor, order: editingPhaseOrder } 
+            : p
+        )
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+      setEditingPhaseId(null);
+    } catch (err: any) {
+      console.error("Erro ao salvar fase editada:", err);
+      alert("Não foi possível salvar as alterações da fase. " + (err.message || err));
+    }
   };
 
   const addStatusSetting = async () => {
     if (!newStatusName.trim() || !localSettings) return;
-    const newStatus = {
-      id: Math.random().toString(36).substring(7),
-      name: newStatusName.trim(),
-      color: newStatusColor,
-      associatedPhases: newStatusPhases
-    };
-    const updated = {
-      ...localSettings,
-      statuses: [...localSettings.statuses, newStatus]
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
-    setNewStatusName('');
-    setNewStatusColor('#94A3B8');
-    setNewStatusPhases([]);
+    try {
+      const statusesList = localSettings.statuses || [];
+      const newStatus = {
+        id: Math.random().toString(36).substring(7),
+        name: newStatusName.trim(),
+        color: newStatusColor,
+        associatedPhases: newStatusPhases
+      };
+      const updated = {
+        ...localSettings,
+        statuses: [...statusesList, newStatus]
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+      setNewStatusName('');
+      setNewStatusColor('#94A3B8');
+      setNewStatusPhases([]);
+    } catch (err: any) {
+      console.error("Erro ao adicionar status:", err);
+      alert("Não foi possível adicionar o novo status. " + (err.message || err));
+    }
   };
 
   const removeStatusSetting = async (id: string) => {
     if (!localSettings) return;
-    const updated = {
-      ...localSettings,
-      statuses: localSettings.statuses.filter(s => s.id !== id)
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
+    try {
+      const statusesList = localSettings.statuses || [];
+      const updated = {
+        ...localSettings,
+        statuses: statusesList.filter(s => s.id !== id)
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+    } catch (err: any) {
+      console.error("Erro ao remover status:", err);
+      alert("Não foi possível excluir o status. " + (err.message || err));
+    }
   };
 
   const startEditStatus = (status: any) => {
@@ -212,17 +242,23 @@ export default function SettingsPage() {
 
   const saveEditStatus = async () => {
     if (!editingStatusId || !editingStatusName.trim() || !localSettings) return;
-    const updated = {
-      ...localSettings,
-      statuses: localSettings.statuses.map(s => 
-        s.id === editingStatusId 
-          ? { ...s, name: editingStatusName.trim(), color: editingStatusColor, associatedPhases: editingStatusPhases } 
-          : s
-      )
-    };
-    setLocalSettings(updated);
-    await updateSettings(updated);
-    setEditingStatusId(null);
+    try {
+      const statusesList = localSettings.statuses || [];
+      const updated = {
+        ...localSettings,
+        statuses: statusesList.map(s => 
+          s.id === editingStatusId 
+            ? { ...s, name: editingStatusName.trim(), color: editingStatusColor, associatedPhases: editingStatusPhases } 
+            : s
+        )
+      };
+      setLocalSettings(updated);
+      await updateSettings(updated);
+      setEditingStatusId(null);
+    } catch (err: any) {
+      console.error("Erro ao salvar status editado:", err);
+      alert("Não foi possível salvar as alterações do status. " + (err.message || err));
+    }
   };
 
   const handleDeleteUser = async (id: string) => {

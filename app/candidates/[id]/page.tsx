@@ -16,7 +16,7 @@ import { db } from '@/database/db';
 import { historyService } from '@/services/historyService';
 import { 
   Candidate, Application, Job, HistoryEvent, 
-  CandidateDocument, ApplicationPhase, ApplicationStatus, Gender
+  CandidateDocument, ApplicationPhase, ApplicationStatus, Gender, Interview
 } from '@/types';
 import { cn } from '@/lib/utils';
 import { CandidateModal } from '@/components/CandidateModal';
@@ -44,6 +44,18 @@ export default function CandidateDetailsPage() {
   const [fileBase64, setFileBase64] = useState<string>('');
   const [viewingDocument, setViewingDocument] = useState<CandidateDocument | null>(null);
 
+  // Estados dos agendamentos de entrevistas
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [scheduleData, setScheduleData] = useState({
+    applicationId: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '09:00',
+    responsible: 'Administrador',
+    type: 'Presencial' as 'Presencial' | 'Remoto' | 'Telefone',
+    observations: ''
+  });
+
   useEffect(() => {
     const candidateData = candidates.find(c => c.id === id);
     if (candidateData) {
@@ -53,17 +65,132 @@ export default function CandidateDetailsPage() {
   }, [id, candidates]);
 
   const fetchRelatedData = async () => {
-    const [historyData, docData] = await Promise.all([
+    const [historyData, docData, interviewData] = await Promise.all([
       db.listHistory(id),
-      db.listDocuments(id)
+      db.listDocuments(id),
+      db.getInterviewsByCandidate(id)
     ]);
     setHistory(historyData);
     setDocuments(docData);
+    setInterviews(interviewData || []);
   };
 
   const handleUpdateStatus = async (appId: string, phase: ApplicationPhase, status: ApplicationStatus) => {
     await updateApplication(appId, { currentPhase: phase, currentStatus: status });
     fetchRelatedData();
+  };
+
+  const handleScheduleInterview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleData.applicationId) return;
+
+    try {
+      const selectedApp = applications.find(a => a.id === scheduleData.applicationId);
+      if (!selectedApp) return;
+
+      // 1. Atualizar candidatura
+      await updateApplication(selectedApp.id, {
+        interviewDate: scheduleData.date,
+        interviewTime: scheduleData.time,
+        currentPhase: ApplicationPhase.SCHEDULING,
+        currentStatus: ApplicationStatus.SCHEDULED
+      });
+
+      // 2. Criar entrevista
+      await db.createInterview({
+        applicationId: selectedApp.id,
+        candidateId: id,
+        jobId: selectedApp.jobId,
+        date: scheduleData.date,
+        time: scheduleData.time,
+        responsible: scheduleData.responsible,
+        type: scheduleData.type,
+        status: "Agendado",
+        observations: scheduleData.observations
+      });
+
+      // 3. Histórico
+      await db.addHistory({
+        candidateId: id,
+        applicationId: selectedApp.id,
+        type: "Entrevista",
+        description: `Entrevista agendada para: ${jobs.find(j => j.id === selectedApp.jobId)?.title || ''}`,
+        details: `Data: ${scheduleData.date}, Hora: ${scheduleData.time}, Tipo: ${scheduleData.type}`,
+        user: "Administrador"
+      });
+
+      // 4. Reset
+      setIsScheduleModalOpen(false);
+      setScheduleData({
+        applicationId: '',
+        date: new Date().toISOString().split('T')[0],
+        time: '09:00',
+        responsible: 'Administrador',
+        type: 'Presencial',
+        observations: ''
+      });
+
+      fetchRelatedData();
+      refreshApplications();
+    } catch (err) {
+      console.error("Erro ao agendar entrevista:", err);
+    }
+  };
+
+  const handleUpdateInterviewStatus = async (interviewId: string, status: "Agendado" | "Realizado" | "Cancelado" | "Não Compareceu" | "Reagendado") => {
+    try {
+      const updatedInt = await db.updateInterview(interviewId, { status });
+      const app = applications.find(a => a.id === updatedInt.applicationId);
+      if (app) {
+        let appStatus = app.currentStatus;
+        let appPhase = app.currentPhase;
+
+        if (status === "Realizado") {
+          appStatus = ApplicationStatus.INTERVIEW_DONE;
+          appPhase = ApplicationPhase.INTERVIEW;
+        } else if (status === "Cancelado") {
+          appStatus = ApplicationStatus.SCREENING;
+        } else if (status === "Não Compareceu") {
+          appStatus = ApplicationStatus.NO_SHOW;
+        }
+
+        await updateApplication(app.id, {
+          currentStatus: appStatus,
+          currentPhase: appPhase
+        });
+      }
+
+      await db.addHistory({
+        candidateId: id,
+        applicationId: updatedInt.applicationId,
+        type: "Entrevista",
+        description: `Status de agendamento alterado para: ${status}`,
+        user: "Administrador"
+      });
+
+      fetchRelatedData();
+      refreshApplications();
+    } catch (err) {
+      console.error("Erro ao atualizar entrevista:", err);
+    }
+  };
+
+  const handleDeleteInterview = async (interviewId: string) => {
+    if (!window.confirm("Deseja realmente excluir este agendamento de entrevista?")) return;
+    try {
+      await db.deleteInterview(interviewId);
+      await db.addHistory({
+        candidateId: id,
+        type: "Entrevista",
+        description: `Agendamento de entrevista cancelado e removido`,
+        user: "Administrador"
+      });
+
+      fetchRelatedData();
+      refreshApplications();
+    } catch (err) {
+      console.error("Erro ao excluir entrevista:", err);
+    }
   };
 
   const handleAddDocument = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -384,7 +511,14 @@ export default function CandidateDetailsPage() {
                         </div>
                         <div className="mt-8 pt-4 border-t border-border/30 flex justify-end items-center print:hidden">
                           <div className="flex gap-2">
-                             <button className="p-3 text-muted-foreground hover:text-brand-dark hover:bg-brand-bg transition-all rounded-xl border border-transparent hover:border-border/50 shadow-sm shadow-transparent hover:shadow-inner">
+                             <button 
+                               onClick={() => {
+                                 setScheduleData(prev => ({ ...prev, applicationId: app.id }));
+                                 setIsScheduleModalOpen(true);
+                               }}
+                               className="p-3 text-muted-foreground hover:text-brand-dark hover:bg-brand-bg transition-all rounded-xl border border-transparent hover:border-border/50 shadow-sm shadow-transparent hover:shadow-inner"
+                               title="Agendar entrevista para esta vaga"
+                             >
                                <Calendar size={18} />
                              </button>
                              <button 
@@ -535,19 +669,154 @@ export default function CandidateDetailsPage() {
             )}
 
             {activeTab === 'entrevistas' && (
-              <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex items-center gap-4">
-                  <AlertCircle className="text-amber-600" size={32} />
-                  <div>
-                    <h4 className="font-bold text-amber-900">Agenda Integrada</h4>
-                    <p className="text-sm text-amber-800">Agende e gerencie entrevistas diretamente pelo perfil do candidato para manter o histórico centralizado.</p>
-                  </div>
-                </div>
-                <button className="w-full py-4 border-2 border-dashed border-border rounded-2xl text-muted-foreground font-bold hover:bg-brand-bg/10 hover:border-brand-coral transition-all flex items-center justify-center gap-2">
-                  <Plus size={20} />
-                  Agendar Nova Entrevista
-                </button>
-              </div>
+               <div className="space-y-6">
+                 {/* Top Status Announcement */}
+                 <div className="bg-amber-50 border border-amber-100 p-6 rounded-[24px] flex items-center gap-4">
+                   <AlertCircle className="text-amber-600 shrink-0" size={32} />
+                   <div className="space-y-0.5">
+                     <h4 className="font-bold text-amber-900 leading-none">Agenda Integrada</h4>
+                     <p className="text-xs text-amber-800 leading-normal">
+                       Agende e gerencie reuniões diretamente pelo perfil do candidato para manter o histórico centralizado e sincronizar com o calendário geral do recrutamento.
+                     </p>
+                   </div>
+                 </div>
+
+                 {/* Interviews List */}
+                 <div className="space-y-4">
+                   {interviews.length === 0 ? (
+                     <div className="bg-brand-bg/30 border border-dashed border-border p-12 text-center rounded-[28px]">
+                       <div className="w-16 h-16 bg-brand-bg rounded-full flex items-center justify-center mx-auto mb-4 text-muted-foreground">
+                         <Calendar size={32} />
+                       </div>
+                       <h4 className="text-lg font-bold mb-1">Nenhuma entrevista agendada</h4>
+                       <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-4">Planeje conversas com este candidato e registre-as para que todo o time do RH possa acompanhar.</p>
+                       <button 
+                         onClick={() => setIsScheduleModalOpen(true)}
+                         className="px-6 py-3 bg-brand-coral text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all shadow-md shadow-brand-coral/20 flex items-center gap-2 mx-auto"
+                       >
+                         <Plus size={16} />
+                         Agendar Nova Entrevista
+                       </button>
+                     </div>
+                   ) : (
+                     <div className="space-y-4">
+                       <div className="flex items-center justify-between">
+                         <h4 className="font-extrabold text-sm text-brand-dark/60 uppercase tracking-widest">{interviews.length} Eventos Cadastrados</h4>
+                         <button 
+                           onClick={() => setIsScheduleModalOpen(true)}
+                           className="px-4 py-2 bg-brand-bg hover:bg-brand-bg/80 text-brand-dark rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-border/50 shadow-sm"
+                         >
+                           <Plus size={14} />
+                           Novo Agendamento
+                         </button>
+                       </div>
+
+                       <div className="grid grid-cols-1 gap-4">
+                         {interviews.map((interview) => {
+                           const app = applications.find(a => a.id === interview.applicationId);
+                           const job = jobs.find(j => j.id === interview.jobId || j.id === app?.jobId);
+                           const formattedDate = new Date(interview.date + 'T00:00:00').toLocaleDateString('pt-BR');
+
+                           return (
+                             <div key={interview.id} className="bg-white border border-border/50 rounded-[28px] p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                               <div className={cn(
+                                 "absolute top-0 left-0 w-1.5 h-full",
+                                 interview.status === 'Realizado' ? "bg-emerald-500" :
+                                 interview.status === 'Cancelado' ? "bg-rose-500" :
+                                 interview.status === 'Não Compareceu' ? "bg-amber-500" : "bg-brand-coral"
+                               )} />
+                               
+                               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                 <div className="space-y-3 flex-1">
+                                   <div className="flex flex-wrap items-center gap-2">
+                                     <span className="text-xs font-black bg-brand-bg/80 text-brand-dark border border-border/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                                       <Calendar size={14} className="text-brand-coral" />
+                                       {formattedDate} às {interview.time}
+                                     </span>
+                                     <span className={cn(
+                                       "text-[10px] font-black uppercase px-2.5 py-1 rounded-full border tracking-wider",
+                                       interview.type === 'Remoto' ? "bg-blue-50 border-blue-150 text-blue-700" :
+                                       interview.type === 'Telefone' ? "bg-purple-50 border-purple-150 text-purple-700" :
+                                       "bg-orange-50 border-orange-150 text-orange-700"
+                                     )}>
+                                       {interview.type}
+                                     </span>
+                                     <span className={cn(
+                                       "text-[10px] font-black uppercase px-2.5 py-1 rounded-full border tracking-wider",
+                                       interview.status === 'Realizado' ? "bg-emerald-50 border-emerald-150 text-emerald-700" :
+                                       interview.status === 'Cancelado' ? "bg-rose-50 border-rose-150 text-rose-700" :
+                                       interview.status === 'Não Compareceu' ? "bg-amber-50 border-amber-150 text-amber-700" :
+                                       "bg-orange-50 border-orange-150 text-orange-700"
+                                     )}>
+                                       {interview.status}
+                                     </span>
+                                   </div>
+
+                                   <div>
+                                     <h5 className="font-extrabold text-lg text-brand-dark mb-0.5">
+                                       {job?.title || "Vaga em processo"}
+                                     </h5>
+                                     <p className="text-xs text-muted-foreground font-semibold">
+                                       Responsável: {interview.responsible} {(app?.channel) && `• Canal: ${app.channel}`}
+                                     </p>
+                                   </div>
+
+                                   {interview.observations && (
+                                     <p className="text-xs italic bg-brand-bg/40 p-3 rounded-xl border border-border/10 text-brand-dark/80 max-w-xl">
+                                       "{interview.observations}"
+                                     </p>
+                                   )}
+                                 </div>
+
+                                 {/* Interview actions */}
+                                 <div className="flex items-center gap-2 max-xs:flex-wrap print:hidden md:border-l md:border-border/30 md:pl-6 shrink-0 h-full">
+                                   <div className="flex flex-col space-y-1.5 font-sans">
+                                     <select
+                                       className="px-3 py-2 bg-brand-bg border border-border/50 text-[10px] font-black text-brand-dark uppercase rounded-xl cursor-pointer hover:bg-gray-100 transition-all outline-none"
+                                       value={interview.status}
+                                       onChange={(e) => handleUpdateInterviewStatus(interview.id, e.target.value as any)}
+                                     >
+                                       <option value="Agendado">Agendado</option>
+                                       <option value="Realizado">Realizado</option>
+                                       <option value="Cancelado">Cancelado</option>
+                                       <option value="Não Compareceu">Não Compareceu</option>
+                                       <option value="Reagendado">Reagendado</option>
+                                     </select>
+
+                                     <button
+                                       type="button"
+                                       onClick={() => {
+                                         const phoneStr = (candidate?.phone || '').replace(/\D/g, '');
+                                         const message = encodeURIComponent(
+                                           `Olá, ${candidate?.name || 'tudo bem'}! Passando para confirmar nossa entrevista agendada de forma ${interview.type} para o dia ${formattedDate} às ${interview.time} referente à oportunidade de ${job?.title || 'nossa vaga de contratação'}. Confirmado?`
+                                         );
+                                         window.open(`https://wa.me/55${phoneStr}?text=${message}`, '_blank');
+                                       }}
+                                       className="w-full text-center py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-500/10"
+                                     >
+                                       <MessageSquare size={12} />
+                                       Confirmar No Whats
+                                     </button>
+
+                                     <button
+                                       type="button"
+                                       onClick={() => handleDeleteInterview(interview.id)}
+                                       className="w-full text-center py-2 px-3 hover:bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all"
+                                     >
+                                       <Trash2 size={12} />
+                                       Excluir Agendamento
+                                     </button>
+                                   </div>
+                                 </div>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               </div>
             )}
           </div>
         </div>
@@ -710,6 +979,147 @@ export default function CandidateDetailsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 font-sans text-brand-dark">
+          <div className="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl relative">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                <Calendar className="text-brand-coral" size={24} />
+                Agendar Entrevista
+              </h3>
+              <button 
+                onClick={() => setIsScheduleModalOpen(false)} 
+                className="p-2 hover:bg-gray-100 rounded-xl transition-all"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {applications.length === 0 ? (
+              <div className="text-center py-6 space-y-4">
+                <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mx-auto text-amber-600">
+                  <AlertCircle size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-brand-dark">Nenhuma inscrição ativa</h4>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                    Para agendar uma entrevista, o candidato deve estar inscrito em pelo menos um processo seletivo.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsScheduleModalOpen(false);
+                    setIsNewAppModalOpen(true);
+                  }}
+                  className="px-6 py-3 bg-brand-dark text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:opacity-90 max-w-xs w-full mt-2"
+                >
+                  Criar Nova Inscrição
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleScheduleInterview} className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Vaga / Inscrição Associada</label>
+                  <select 
+                    required
+                    className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 bg-white text-sm"
+                    value={scheduleData.applicationId}
+                    onChange={e => setScheduleData({...scheduleData, applicationId: e.target.value})}
+                  >
+                    <option value="">Selecione a candidatura...</option>
+                    {applications.map(app => {
+                      const job = jobs.find(j => j.id === app.jobId);
+                      return (
+                        <option key={app.id} value={app.id}>
+                          {job?.title || 'Sem título'} - {app.currentPhase} ({app.currentStatus})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Data</label>
+                    <input 
+                      required
+                      type="date"
+                      className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 bg-white text-sm"
+                      value={scheduleData.date}
+                      onChange={e => setScheduleData({...scheduleData, date: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Horário</label>
+                    <input 
+                      required
+                      type="time"
+                      className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 bg-white text-sm"
+                      value={scheduleData.time}
+                      onChange={e => setScheduleData({...scheduleData, time: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Tipo de Entrevista</label>
+                    <select 
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 bg-white text-sm"
+                      value={scheduleData.type}
+                      onChange={e => setScheduleData({...scheduleData, type: e.target.value as any})}
+                    >
+                      <option value="Presencial">Presencial</option>
+                      <option value="Remoto">Remoto</option>
+                      <option value="Telefone">Telefone</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Responsável</label>
+                    <input 
+                      required
+                      type="text"
+                      className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 bg-white text-sm"
+                      value={scheduleData.responsible}
+                      onChange={e => setScheduleData({...scheduleData, responsible: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Observações / Instruções</label>
+                  <textarea 
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl border border-border outline-none focus:ring-2 focus:ring-brand-coral/50 resize-none text-sm"
+                    placeholder="Ex: Sala de reuniões 2, link do Meets, enviar documento, etc..."
+                    value={scheduleData.observations}
+                    onChange={e => setScheduleData({...scheduleData, observations: e.target.value})}
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsScheduleModalOpen(false)}
+                    className="flex-1 px-4 py-4 border border-border rounded-2xl font-bold hover:bg-gray-50 transition-all text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 px-4 py-4 bg-brand-dark text-white rounded-2xl font-bold hover:opacity-90 transition-all shadow-lg text-sm"
+                  >
+                    Agendar Entrevista
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
