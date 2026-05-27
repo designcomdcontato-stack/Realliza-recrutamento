@@ -949,7 +949,7 @@ export default function SettingsPage() {
 
                       {/* Listagem das Fases */}
                       <div className="space-y-3">
-                         {localSettings.phases.map((p, index) => {
+                         {(localSettings.phases || []).map((p, index) => {
                             const isEditing = editingPhaseId === p.id;
                             return (
                                <div key={p.id} className="flex flex-col p-5 rounded-2xl bg-brand-bg/20 border border-border/30 transition-all">
@@ -1077,7 +1077,7 @@ export default function SettingsPage() {
                             <div className="space-y-2 bg-white/75 p-4 rounded-2xl border border-border/30">
                                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block mb-1">Fases Associadas (Selecione):</span>
                                <div className="flex flex-wrap gap-1.5">
-                                  {localSettings.phases.map(p => {
+                                  {(localSettings.phases || []).map(p => {
                                      const isSel = newStatusPhases.includes(p.name);
                                      return (
                                         <button
@@ -1107,7 +1107,7 @@ export default function SettingsPage() {
 
                       {/* Listagem dos Status */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
-                         {localSettings.statuses.map(s => {
+                         {(localSettings.statuses || []).map(s => {
                             const isEditing = editingStatusId === s.id;
                             return (
                                <div key={s.id} className="flex flex-col p-4 rounded-2xl border border-border/30 bg-brand-bg/20 transition-all justify-between gap-3">
@@ -1131,7 +1131,7 @@ export default function SettingsPage() {
                                         <div className="space-y-1">
                                            <span className="text-[9px] font-extrabold text-muted-foreground uppercase">Fases:</span>
                                            <div className="flex flex-wrap gap-1">
-                                              {localSettings.phases.map(p => {
+                                              {(localSettings.phases || []).map(p => {
                                                  const isSel = editingStatusPhases.includes(p.name);
                                                  return (
                                                     <button

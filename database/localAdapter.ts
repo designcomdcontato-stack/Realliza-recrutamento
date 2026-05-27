@@ -371,7 +371,16 @@ export class LocalDatabaseAdapter implements DatabaseAdapter {
     try {
       const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (!settings || settings === "undefined" || settings === "null") return defaultSettings;
-      return JSON.parse(settings);
+      const parsed = JSON.parse(settings);
+      return {
+        ...defaultSettings,
+        ...parsed,
+        channels: parsed.channels && parsed.channels.length > 0 ? parsed.channels : defaultSettings.channels,
+        phases: parsed.phases && parsed.phases.length > 0 ? parsed.phases : defaultSettings.phases,
+        statuses: parsed.statuses && parsed.statuses.length > 0 ? parsed.statuses : defaultSettings.statuses,
+        rejectionReasons: parsed.rejectionReasons && parsed.rejectionReasons.length > 0 ? parsed.rejectionReasons : defaultSettings.rejectionReasons,
+        documentCategories: parsed.documentCategories && parsed.documentCategories.length > 0 ? parsed.documentCategories : defaultSettings.documentCategories,
+      };
     } catch (e) {
       console.error("LocalDatabase: Error parsing settings:", e);
       return defaultSettings;

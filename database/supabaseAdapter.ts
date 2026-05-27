@@ -1056,11 +1056,11 @@ export class SupabaseDatabaseAdapter implements DatabaseAdapter {
         secondaryColor: v.secondaryColor ?? defaultSettings.secondaryColor,
         accentColor: v.accentColor ?? defaultSettings.accentColor,
         bgColor: v.bgColor ?? defaultSettings.bgColor,
-        channels: v.channels ?? defaultSettings.channels,
-        phases: v.phases ?? defaultSettings.phases,
-        statuses: v.statuses ?? defaultSettings.statuses,
-        rejectionReasons: v.rejectionReasons ?? defaultSettings.rejectionReasons,
-        documentCategories: v.documentCategories ?? defaultSettings.documentCategories,
+        channels: v.channels && v.channels.length > 0 ? v.channels : defaultSettings.channels,
+        phases: v.phases && v.phases.length > 0 ? v.phases : defaultSettings.phases,
+        statuses: v.statuses && v.statuses.length > 0 ? v.statuses : defaultSettings.statuses,
+        rejectionReasons: v.rejectionReasons && v.rejectionReasons.length > 0 ? v.rejectionReasons : defaultSettings.rejectionReasons,
+        documentCategories: v.documentCategories && v.documentCategories.length > 0 ? v.documentCategories : defaultSettings.documentCategories,
         leaders: v.leaders ?? defaultSettings.leaders,
         sectors: v.sectors ?? defaultSettings.sectors
       };
